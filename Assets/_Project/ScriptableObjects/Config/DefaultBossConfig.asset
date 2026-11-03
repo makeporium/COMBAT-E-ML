@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: AdaptiveBossArena.AI::AdaptiveBossArena.AI.BossConfig
   _id: boss.default
   _designerNotes: 
-  _maxHealth: 650
+  _maxHealth: 250
   _maxPoise: 100
   _poiseRegenPerSecond: 12
   _baselineParryChance: 0.12
@@ -45,7 +45,7 @@ MonoBehaviour:
     - {fileID: 11400000, guid: 9a2b3bde94dd7424783e41b43ef210e0, type: 2}
     _signatureAttack: {fileID: 11400000, guid: 9a2b3bde94dd7424783e41b43ef210e0, type: 2}
     _moveSpeedMultiplier: 1
-    _attackCooldownSeconds: 1.15
+    _attackCooldownSeconds: 2.0
     _adaptationRateMultiplier: 1
   - _name: Pressing
     _healthThreshold: 0.66

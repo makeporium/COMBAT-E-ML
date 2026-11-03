@@ -398,7 +398,7 @@ namespace AdaptiveBossArena.Editor
 
             AttackDefinition slam = CreateAttack(
                 "BossSlam", "Ground Slam", DamageType.BossMelee,
-                damage: 18f, startup: 0.62f, active: 0.14f, recovery: 0.70f,
+                damage: 8f, startup: 0.62f, active: 0.14f, recovery: 0.70f,
                 range: 3.6f, arc: 360f, poise: 40f, knockback: 8f, hitStop: 0.10f, trauma: 0.45f,
                 shape: AttackShape.Sphere, stagger: StaggerStrength.Interrupt, telegraph: true,
                 leavesHazard: true, hazardRadius: 3f, hazardDamagePerTick: 3f, hazardDuration: 3.5f,
@@ -1047,7 +1047,7 @@ namespace AdaptiveBossArena.Editor
                     // 650 against a player dealing roughly 25 a second is about half a minute of
                     // sustained pressure, which is where a single-encounter slice wants to sit. The
                     // 1000 it started at read as a sponge.
-                    writer.Float("_maxHealth", 650f)
+                    writer.Float("_maxHealth", 250f)
                         .Float("_maxPoise", 100f)
                         .Float("_poiseRegenPerSecond", 12f)
                         .Float("_resolveThreshold", 100f)
@@ -1096,7 +1096,7 @@ namespace AdaptiveBossArena.Editor
 
                 WritePhase(
                     phases.GetArrayElementAtIndex(0), ShouldWriteTuning(created), "Measured", threshold: 1f,
-                    moveMultiplier: 1f, cooldown: 1.15f, adaptationRate: 1f,
+                    moveMultiplier: 1f, cooldown: 2.0f, adaptationRate: 1f,
                     signature: attacks.Slam,
                     attacks.Sweep, attacks.Slam);
 

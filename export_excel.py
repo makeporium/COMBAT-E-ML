@@ -33,7 +33,7 @@ VARIABLE_DICTIONARY = [
     # Boss Vitals & State
     ("boss_state", "Boss Vitals", "BossController (StateMachine)", "String", "BossIdleState, BossApproachState, BossAttackState, etc.", "Active state machine state of the boss AI."),
     ("boss_action", "Boss Vitals", "BossController.CurrentAttack", "String", "None, Ground Slam, Cataclysmic Wave, etc.", "Exact name of the specific attack, telegraph, or action currently being executed by the boss."),
-    ("boss_hp", "Boss Vitals", "BossController.Health", "Float", "0.0 to 650.0 (HP)", "Current boss hit points remaining."),
+    ("boss_hp", "Boss Vitals", "BossController.Health", "Float", "0.0 to 250.0 (HP)", "Current boss hit points remaining."),
     ("boss_hp_pct", "Boss Vitals", "BossController.Health.Normalized", "Float", "0.0 to 1.0", "Normalized boss hit points percentage (1.0 = 100% full health)."),
     ("boss_poise", "Boss Vitals", "BossController.Poise", "Float", "0.0 to 100.0 (Poise)", "Boss poise / stagger threshold meter. Drained by player deflects and heavy attacks."),
     ("boss_poise_pct", "Boss Vitals", "BossController.Poise.Normalized", "Float", "0.0 to 1.0", "Normalized boss poise meter (1.0 = full poise)."),

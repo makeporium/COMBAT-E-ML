@@ -16,7 +16,7 @@ MonoBehaviour:
   _designerNotes: 
   _displayName: Ground Slam
   _castVfxPrefab: {fileID: 0}
-  _damage: 18
+  _damage: 8
   _damageType: 3
   _poiseDamage: 40
   _stagger: 2
