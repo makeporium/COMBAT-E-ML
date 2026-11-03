@@ -79,6 +79,10 @@ namespace AdaptiveBossArena.Editor
             // is pressed under pressure and mid-movement more than any other control.
             BuildButton(map, InputActionNames.Dash, "<Keyboard>/space", "<Gamepad>/buttonEast");
 
+            // Jump sits on F (or Left Alt) on Keyboard, and buttonSouth (A on Xbox, Cross on PS) on Gamepad.
+            BuildButton(map, InputActionNames.Jump, "<Keyboard>/f", "<Gamepad>/buttonSouth");
+            map.FindAction(InputActionNames.Jump)?.AddBinding("<Keyboard>/leftAlt", groups: KeyboardMouseScheme);
+
             // Guard is held on the right mouse button, the hand that is already on the mouse: the player asked
             // for block and deflect under the mouse, and Shift is now the heavy-attack modifier.
             BuildButton(map, InputActionNames.Guard, "<Mouse>/rightButton", "<Gamepad>/leftShoulder");

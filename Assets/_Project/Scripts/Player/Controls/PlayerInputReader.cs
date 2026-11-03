@@ -57,7 +57,21 @@ namespace AdaptiveBossArena.Player.Controls
                 return false;
             }
 
-            InputAction resolved = _actionLookup[(int)action];
+            int index = (int)action;
+            InputAction resolved = _actionLookup != null && index < _actionLookup.Length ? _actionLookup[index] : null;
+
+            if (action == PlayerInputAction.Jump)
+            {
+                if (resolved != null && resolved.WasPressedThisFrame())
+                {
+                    return true;
+                }
+
+                // Fallback keyboard ('F' or 'Left Alt') and gamepad ('South' / 'A') input
+                bool kb = Keyboard.current != null && (Keyboard.current.fKey.wasPressedThisFrame || Keyboard.current.leftAltKey.wasPressedThisFrame);
+                bool gp = Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame;
+                return kb || gp;
+            }
 
             if (resolved == null || !resolved.WasPressedThisFrame())
             {
@@ -82,7 +96,21 @@ namespace AdaptiveBossArena.Player.Controls
                 return false;
             }
 
-            InputAction resolved = _actionLookup[(int)action];
+            int index = (int)action;
+            InputAction resolved = _actionLookup != null && index < _actionLookup.Length ? _actionLookup[index] : null;
+
+            if (action == PlayerInputAction.Jump)
+            {
+                if (resolved != null && resolved.IsPressed())
+                {
+                    return true;
+                }
+
+                bool kb = Keyboard.current != null && (Keyboard.current.fKey.isPressed || Keyboard.current.leftAltKey.isPressed);
+                bool gp = Gamepad.current != null && Gamepad.current.buttonSouth.isPressed;
+                return kb || gp;
+            }
+
             return resolved != null && resolved.IsPressed();
         }
 

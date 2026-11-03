@@ -55,6 +55,17 @@ namespace AdaptiveBossArena.Player
         [Range(0.02f, 0.6f)]
         private float _impulseHalfLifeSeconds = 0.12f;
 
+        [Header("Jump")]
+        [SerializeField]
+        [Tooltip("Initial upward speed when jumping.")]
+        [Range(3f, 15f)]
+        private float _jumpUpwardSpeed = 7.5f;
+
+        [SerializeField]
+        [Tooltip("Stamina cost to perform a jump.")]
+        [Range(0f, 50f)]
+        private float _jumpStaminaCost = 15f;
+
         [Header("Knockdowns and launches")]
         [SerializeField]
         [Tooltip("Upward speed a launch throws the player at. With gravity 25, 9 m/s is about 0.7 s in the air.")]
@@ -255,6 +266,12 @@ namespace AdaptiveBossArena.Player
 
         /// <summary>Half-life of an imposed shove such as knockback.</summary>
         public float ImpulseHalfLifeSeconds => _impulseHalfLifeSeconds;
+
+        /// <summary>Upward speed of a voluntary jump.</summary>
+        public float JumpUpwardSpeed => _jumpUpwardSpeed > 0f ? _jumpUpwardSpeed : 7.5f;
+
+        /// <summary>Stamina cost to jump.</summary>
+        public float JumpStaminaCost => _jumpStaminaCost >= 0f ? _jumpStaminaCost : 15f;
 
         /// <summary>Upward speed of a launch.</summary>
         public float LaunchUpwardSpeed => _launchUpwardSpeed;

@@ -31,7 +31,10 @@ namespace AdaptiveBossArena.Player.Controls
         SwapWeapon = 6,
 
         /// <summary>Strike a blow aside with the blade. Appended, never inserted.</summary>
-        Parry = 7
+        Parry = 7,
+
+        /// <summary>Vertical jump.</summary>
+        Jump = 8
     }
 
     /// <summary>Names the runtime looks up in the generated input actions asset.</summary>
@@ -81,6 +84,9 @@ namespace AdaptiveBossArena.Player.Controls
         /// <summary>The dedicated parry, distinct from raising the guard.</summary>
         public const string Parry = "Parry";
 
+        /// <summary>Vertical jump.</summary>
+        public const string Jump = "Jump";
+
         /// <summary>Open the pause menu.</summary>
         public const string Pause = "Pause";
 
@@ -99,6 +105,7 @@ namespace AdaptiveBossArena.Player.Controls
                 case PlayerInputAction.Guard: return Guard;
                 case PlayerInputAction.SwapWeapon: return SwapWeapon;
                 case PlayerInputAction.Parry: return Parry;
+                case PlayerInputAction.Jump: return Jump;
                 default: return string.Empty;
             }
         }

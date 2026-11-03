@@ -53,6 +53,9 @@ namespace AdaptiveBossArena.Player
         /// <summary>Transition priority for beginning a dash.</summary>
         private const int DashTransitionPriority = 100;
 
+        /// <summary>Transition priority for jumping, right under dash.</summary>
+        private const int JumpTransitionPriority = 99;
+
         /// <summary>Transition priority for beginning an attack, below dash by design.</summary>
         private const int AttackTransitionPriority = 90;
 
@@ -188,6 +191,7 @@ namespace AdaptiveBossArena.Player
         private PlayerIdleState _idleState;
         private PlayerMoveState _moveState;
         private PlayerDashState _dashState;
+        private PlayerJumpState _jumpState;
         private PlayerAttackState _attackState;
         private PlayerHealState _healState;
         private PlayerParryState _parryState;
@@ -617,6 +621,7 @@ namespace AdaptiveBossArena.Player
             _idleState = new PlayerIdleState();
             _moveState = new PlayerMoveState();
             _dashState = new PlayerDashState();
+            _jumpState = new PlayerJumpState();
             _attackState = new PlayerAttackState();
             _parryState = new PlayerParryState();
             _parryStrikeState = new PlayerParryStrikeState();
@@ -647,6 +652,9 @@ namespace AdaptiveBossArena.Player
             _machine.AddTransition(_dashState, _parryState, WantsToCancelRollIntoGuard, GuardTransitionPriority);
             _machine.AddTransition(_dashState, _moveState, DashFinishedWithInput);
             _machine.AddTransition(_dashState, _idleState, DashFinished);
+
+            _machine.AddTransition(_jumpState, _moveState, JumpFinishedWithInput);
+            _machine.AddTransition(_jumpState, _idleState, JumpFinished);
 
             // Dash outranks the natural exit, so a player holding dash through recovery escapes the
             // moment they are allowed to rather than after the attack fully resolves.
@@ -704,6 +712,7 @@ namespace AdaptiveBossArena.Player
         private void AddGroundedTransitions(IState<PlayerContext> from)
         {
             _machine.AddTransition(from, _dashState, WantsToDash, DashTransitionPriority);
+            _machine.AddTransition(from, _jumpState, WantsToJump, JumpTransitionPriority);
             _machine.AddTransition(from, _parryStrikeState, WantsToParry, ParryTransitionPriority);
             _machine.AddTransition(from, _parryState, WantsToGuard, GuardTransitionPriority);
             _machine.AddTransition(from, _attackState, WantsToAttack, AttackTransitionPriority);
@@ -727,6 +736,17 @@ namespace AdaptiveBossArena.Player
         private bool WantsToDash(PlayerContext context) =>
             context.CanBeginDash &&
             context.InputBuffer.TryConsume(PlayerInputAction.Dash, _time.CombatTime);
+
+        private bool WantsToJump(PlayerContext context) =>
+            context.Motor.IsGrounded &&
+            context.Stamina.CanSpend(context.Config.JumpStaminaCost) &&
+            (context.InputBuffer.TryConsume(PlayerInputAction.Jump, _time.CombatTime) ||
+             (context.Input != null && context.Input.WasPressedThisFrame(PlayerInputAction.Jump)));
+
+        private bool JumpFinished(PlayerContext context) => _jumpState.IsComplete(context);
+
+        private bool JumpFinishedWithInput(PlayerContext context) =>
+            _jumpState.IsComplete(context) && context.HasMoveInput;
 
         private bool DashFinished(PlayerContext context) => _dashState.IsComplete(context);
 

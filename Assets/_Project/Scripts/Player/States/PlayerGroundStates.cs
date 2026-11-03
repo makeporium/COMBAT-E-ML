@@ -64,4 +64,64 @@ namespace AdaptiveBossArena.Player.States
             context.Motor.Tick(deltaTime);
         }
     }
+
+    /// <summary>
+    /// A controlled voluntary jump by the player character.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from being tossed into the air by an enemy impact (<see cref="PlayerAirborneState"/>).
+    /// Allows the player to leap over low sweeps, ground slams, and floor hazard fires while retaining air steering.
+    /// </remarks>
+    public sealed class PlayerJumpState : StateBase<PlayerContext>
+    {
+        private const float MinAirTimeSeconds = 0.12f;
+        private float _elapsed;
+
+        /// <summary>
+        /// True once the player has left the ground and touched back down, or exceeded max airborne duration.
+        /// </summary>
+        public bool IsComplete(PlayerContext context) =>
+            _elapsed >= context.Config.MaximumAirborneSeconds ||
+            (_elapsed >= MinAirTimeSeconds && context.Motor.IsGrounded && context.Motor.VerticalVelocity <= 0.05f);
+
+        /// <inheritdoc />
+        protected override void OnEnter(PlayerContext context)
+        {
+            _elapsed = 0f;
+            context.SetObservableState(ObservableActionState.Airborne);
+
+            // Spend stamina
+            context.Stamina.TrySpend(context.Config.JumpStaminaCost);
+
+            // Launch vertically into the air
+            context.Motor.Launch(context.Config.JumpUpwardSpeed);
+        }
+
+        /// <inheritdoc />
+        protected override void OnTick(PlayerContext context, float deltaTime)
+        {
+            _elapsed += deltaTime;
+
+            // Retain full aerial steering control
+            if (context.HasMoveInput)
+            {
+                Vector2 input = context.Input.MoveDirection;
+                context.Motor.ApplyMoveInput(input, deltaTime);
+
+                Vector3 facing = context.IsLockedOn
+                    ? context.FacingTowardThreat
+                    : context.Motor.ToWorldDirection(input);
+
+                context.Motor.FaceDirection(facing, deltaTime);
+            }
+
+            context.Motor.Tick(deltaTime);
+        }
+
+        /// <inheritdoc />
+        protected override void OnExit(PlayerContext context)
+        {
+            _elapsed = 0f;
+        }
+    }
 }
