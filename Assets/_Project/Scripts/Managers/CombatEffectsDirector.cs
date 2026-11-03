@@ -1,0 +1,373 @@
+using AdaptiveBossArena.Combat.Feel;
+using AdaptiveBossArena.Core.Combat;
+using AdaptiveBossArena.Core.Events;
+using AdaptiveBossArena.Core.Services;
+using UnityEngine;
+
+namespace AdaptiveBossArena.Game
+{
+    /// <summary>
+    /// Turns witnessed combat occurrences into sparks, flashes and trails.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The visual counterpart to <see cref="CombatAudioDirector"/>, and deliberately built the same
+    /// way: combat systems publish what happened and know nothing about how it is presented. Adding a
+    /// new effect never means editing combat code.
+    /// </para>
+    /// <para>
+    /// Note what this does <em>not</em> do — it never feeds anything back into the fight. It is a
+    /// pure consumer of the event bus, which is the only role the bus is safe for outside the
+    /// learning system's statistics.
+    /// </para>
+    /// </remarks>
+    [DisallowMultipleComponent]
+    public sealed class CombatEffectsDirector : MonoBehaviour
+    {
+        /// <summary>
+        /// How far above a reported event position a burst is placed.
+        /// </summary>
+        /// <remarks>
+        /// Combat events are positioned at a character's transform origin, which sits on the floor.
+        /// Sparks emitted there are half swallowed by the ground and read as dust rather than as a
+        /// hit. Roughly chest height on both combatants puts them where the blow actually landed.
+        /// </remarks>
+        private const float ImpactHeight = 1.1f;
+
+        /// <summary>Height the phase-transition shockwave erupts from, roughly the boss's centre.</summary>
+        private const float ShockwaveHeight = 1.2f;
+
+        /// <summary>Field-of-view kick, in degrees, that widens the view on a dash for a burst of speed.</summary>
+        private const float DashFovWiden = 6f;
+
+        /// <summary>Field-of-view narrowing on a clean deflect, snapping focus onto the parry.</summary>
+        private const float DeflectFovNarrow = 3.5f;
+
+        /// <summary>Field-of-view narrowing on a perfect dodge, complementing the slow-motion.</summary>
+        private const float PerfectDodgeFovNarrow = 5f;
+
+        /// <summary>Screen-shake trauma on an overbalance, a small jolt so the stumble lands physically.</summary>
+        private const float OverbalanceTrauma = 0.2f;
+
+        /// <summary>
+        /// Shake for a body driven into the wall. Between a heavy hit's and a slam's: the wall is the
+        /// harder thing to be hit by, but it is not an attack and should not read as one.
+        /// </summary>
+        private const float WallImpactTrauma = 0.32f;
+
+        /// <summary>
+        /// World speed for the beat after a guard breaks.
+        /// </summary>
+        /// <remarks>
+        /// The biggest moment in an exchange landed at full speed, over as soon as it began. A third of a
+        /// second at a third of the speed lets the stagger be seen, and is well inside the opening it grants.
+        /// </remarks>
+        private const float PoiseBreakSlowMotionScale = 0.35f;
+
+        private const float PoiseBreakSlowMotionSeconds = 0.35f;
+
+        /// <summary>Shake and camera punch on a broken guard: heavier than any single blow.</summary>
+        private const float PoiseBreakTrauma = 0.38f;
+
+        /// <summary>Rough size of the splatter a light blow leaves, in metres.</summary>
+        private const float LightBloodSize = 0.8f;
+
+        /// <summary>Rough size of the splatter a heavy blow leaves, in metres.</summary>
+        private const float HeavyBloodSize = 1.4f;
+
+        /// <summary>Seed for splatter turns and sizes: cosmetic, and kept off the gameplay generator.</summary>
+        private const uint BloodSeed = 0xB100Du;
+
+        [SerializeField]
+        [Tooltip("Raised on a perfect dodge.")]
+        private VoidEventChannel _perfectDodgeChannel;
+
+        [SerializeField]
+        [Tooltip("Carries the boss phase index, used to erupt a shockwave on each escalation.")]
+        private IntEventChannel _bossPhaseChannel;
+
+        [SerializeField]
+        [Tooltip("Raised when the boss overbalances, used to kick up dust at its feet.")]
+        private VoidEventChannel _overbalanceChannel;
+
+        [SerializeField]
+        [Tooltip("Material impact sparks are drawn with. Assigned by the scene generator, so its shader ships.")]
+        private Material _impactMaterial;
+
+        [SerializeField]
+        [Tooltip("Alpha-blended material blood and dust are drawn with. Assigned by the scene generator.")]
+        private Material _matterMaterial;
+
+        [SerializeField]
+        [Tooltip("Splatter left on the floor under a landed blow. Assigned by the scene generator.")]
+        private Material _bloodMaterial;
+
+        private BloodDecalPool _blood;
+
+        private ImpactBurstPool _bursts;
+        private ICombatEventBus _events;
+        private IScreenShake _shake;
+        private ITimeService _time;
+        private WeaponTrail _playerTrail;
+        private WeaponTrail _bossTrail;
+        private Transform _bossTransform;
+
+        private void Awake()
+        {
+            _bursts = gameObject.AddComponent<ImpactBurstPool>();
+            _bursts.Construct(_impactMaterial, _matterMaterial);
+
+            if (_bloodMaterial != null)
+            {
+                _blood = new GameObject("BloodDecals").AddComponent<BloodDecalPool>();
+                _blood.transform.SetParent(transform, worldPositionStays: false);
+                _blood.Construct(_bloodMaterial, new XorShiftRandomProvider(BloodSeed));
+            }
+        }
+
+        private void Start()
+        {
+            ServiceRegistry.Current.TryGet(out _shake);
+            ServiceRegistry.Current.TryGet(out _time);
+
+            if (ServiceRegistry.Current.TryGet(out _events))
+            {
+                _events.EventRecorded += OnCombatEvent;
+            }
+
+            if (_perfectDodgeChannel != null)
+            {
+                _perfectDodgeChannel.Raised += OnPerfectDodge;
+            }
+
+            if (_bossPhaseChannel != null)
+            {
+                _bossPhaseChannel.Raised += OnBossPhaseChanged;
+            }
+
+            if (_overbalanceChannel != null)
+            {
+                _overbalanceChannel.Raised += OnOverbalance;
+            }
+
+            ResolveTrails();
+        }
+
+        private void OnDestroy()
+        {
+            if (_events != null)
+            {
+                _events.EventRecorded -= OnCombatEvent;
+            }
+
+            if (_perfectDodgeChannel != null)
+            {
+                _perfectDodgeChannel.Raised -= OnPerfectDodge;
+            }
+
+            if (_bossPhaseChannel != null)
+            {
+                _bossPhaseChannel.Raised -= OnBossPhaseChanged;
+            }
+
+            if (_overbalanceChannel != null)
+            {
+                _overbalanceChannel.Raised -= OnOverbalance;
+            }
+        }
+
+        /// <summary>Kicks up dust at the boss's feet as it stumbles, marking the opening a read bought.</summary>
+        /// <remarks>
+        /// A dull, dispersed burst low to the ground — the block flavour reads as dust rather than
+        /// sparks — plus a small jolt, so the overextension is felt as well as seen. Placed on the
+        /// boss because the miss is the boss's, not the player's.
+        /// </remarks>
+        private void OnOverbalance()
+        {
+            if (_bossTransform != null)
+            {
+                _bursts.Play(_bossTransform.position + Vector3.up * 0.25f, Vector3.up, ImpactFlavour.Stone);
+            }
+
+            _shake?.AddTrauma(OverbalanceTrauma);
+        }
+
+        /// <summary>Maps a witnessed occurrence onto a burst or a trail.</summary>
+        private void OnCombatEvent(CombatEvent combatEvent)
+        {
+            switch (combatEvent.Kind)
+            {
+                case CombatEventKind.AttackStarted:
+                    TrailFor(combatEvent.Actor)?.Begin();
+                    break;
+
+                case CombatEventKind.AttackLanded:
+                    Burst(combatEvent.Position, combatEvent.Direction, FlavourFor(combatEvent.DamageType));
+                    _blood?.Place(combatEvent.Position, combatEvent.Direction,
+                        FlavourFor(combatEvent.DamageType) == ImpactFlavour.Heavy ? HeavyBloodSize : LightBloodSize);
+                    break;
+
+                case CombatEventKind.Deflected:
+                    // Driven from the bus rather than from the deflect event channel, which carries
+                    // no position and fires for the same moment. Listening to both would double the
+                    // burst on the single most important beat in the fight.
+                    Burst(combatEvent.Position, -combatEvent.Direction, ImpactFlavour.Deflect);
+                    _shake?.PunchFov(-DeflectFovNarrow);
+                    break;
+
+                case CombatEventKind.DodgePerformed:
+                    // The whole camera breathes out on a dash, which is most of what makes a roll read
+                    // as a burst of speed rather than a teleport.
+                    _shake?.PunchFov(DashFovWiden);
+                    break;
+
+                case CombatEventKind.Blocked:
+                    Burst(combatEvent.Position, -combatEvent.Direction, ImpactFlavour.Block);
+                    break;
+
+                case CombatEventKind.Parried when combatEvent.Actor != CombatantTeam.Player:
+                    // Only when someone other than the player parried. The player's own deflect
+                    // publishes Deflected as well and is served by the case above; bursting on both
+                    // would double the sparks on the single most important beat in the fight, which
+                    // is the same mistake the comment there already guards against.
+                    Burst(combatEvent.Position, -combatEvent.Direction, ImpactFlavour.Deflect);
+                    break;
+
+                case CombatEventKind.WallImpact:
+                    // Sparks thrown back off the wall, toward the fight, where the body met the stone.
+                    Burst(combatEvent.Position, -combatEvent.Direction, ImpactFlavour.Stone);
+                    _shake?.AddTrauma(WallImpactTrauma);
+                    break;
+
+                case CombatEventKind.PoiseBroken:
+                    Burst(combatEvent.Position, Vector3.up, ImpactFlavour.PostureBreak);
+                    _time?.RequestSlowMotion(PoiseBreakSlowMotionScale, PoiseBreakSlowMotionSeconds);
+                    _shake?.AddTrauma(PoiseBreakTrauma);
+                    _shake?.Punch(PoiseBreakTrauma);
+                    break;
+
+                case CombatEventKind.Riposte:
+                    TrailFor(combatEvent.Actor)?.Begin();
+                    Burst(combatEvent.Position, Vector3.up, ImpactFlavour.PostureBreak);
+                    break;
+            }
+        }
+
+        /// <summary>Plays a burst, raised off the floor to where the blow landed.</summary>
+        private void Burst(Vector3 position, Vector3 direction, ImpactFlavour flavour) =>
+            _bursts.Play(position + Vector3.up * ImpactHeight, direction, flavour);
+
+        /// <summary>Heavier attacks throw a bigger, slower burst so weight is visible as well as audible.</summary>
+        private static ImpactFlavour FlavourFor(DamageType damageType)
+        {
+            switch (damageType)
+            {
+                case DamageType.Heavy:
+                case DamageType.BossMelee:
+                    return ImpactFlavour.Heavy;
+
+                default:
+                    return ImpactFlavour.Light;
+            }
+        }
+
+        /// <summary>Whose weapon is swinging.</summary>
+        private WeaponTrail TrailFor(CombatantTeam team) =>
+            team == CombatantTeam.Player ? _playerTrail : _bossTrail;
+
+        /// <summary>
+        /// Finds the trail on each combatant.
+        /// </summary>
+        /// <remarks>
+        /// Resolved by scene search rather than injected, because the combatants are spawned from
+        /// prefabs by the scene generator and there is no seam to hand references through. The search
+        /// happens once, at startup.
+        /// </remarks>
+        private void ResolveTrails()
+        {
+            WeaponTrail[] trails = FindObjectsByType<WeaponTrail>(FindObjectsSortMode.None);
+
+            foreach (WeaponTrail trail in trails)
+            {
+                var combatant = trail.GetComponentInParent<IDamageable>();
+
+                if (combatant == null)
+                {
+                    continue;
+                }
+
+                if (combatant.Team == CombatantTeam.Player)
+                {
+                    _playerTrail = trail;
+                }
+                else
+                {
+                    _bossTrail = trail;
+                    _bossTransform = (combatant as Component)?.transform;
+                }
+            }
+        }
+
+        /// <summary>Erupts a shockwave from the boss on each escalation.</summary>
+        /// <remarks>
+        /// The phase channel also fires for the opening phase and for a reset, so only an index above
+        /// zero — a genuine escalation, since the boss's health only ever falls — gets the eruption.
+        /// </remarks>
+        private void OnBossPhaseChanged(int phaseIndex)
+        {
+            if (phaseIndex <= 0 || _bossTransform == null)
+            {
+                return;
+            }
+
+            _bursts.Play(
+                _bossTransform.position + Vector3.up * ShockwaveHeight, Vector3.up, ImpactFlavour.PostureBreak);
+        }
+
+        private void OnPerfectDodge()
+        {
+            // A tight zoom-in to match the slow-motion — the frame narrows onto the opening the read
+            // just bought.
+            _shake?.PunchFov(-PerfectDodgeFovNarrow);
+
+            // Placed on the player rather than at an impact point, because nothing was struck. The
+            // burst marks where they were when they slipped it.
+            if (_playerTrail != null)
+            {
+                // Not lifted, unlike the others: the trail already sits at chest height, so this is
+                // the one position in the class that is already where it should be.
+                _bursts.Play(_playerTrail.transform.position, Vector3.up, ImpactFlavour.Deflect);
+            }
+        }
+
+        /// <summary>Assigns the channels. Used by the scene generator.</summary>
+        /// <param name="perfectDodge">Perfect dodge channel.</param>
+        /// <param name="bossPhase">Boss phase index channel.</param>
+        /// <param name="overbalance">Boss overbalance channel.</param>
+        /// <param name="impactMaterial">Material the impact sparks are drawn with.</param>
+        public void Bind(
+            VoidEventChannel perfectDodge,
+            IntEventChannel bossPhase,
+            VoidEventChannel overbalance,
+            Material impactMaterial,
+            Material matterMaterial = null,
+            Material bloodMaterial = null)
+        {
+            _perfectDodgeChannel = perfectDodge;
+            _bossPhaseChannel = bossPhase;
+            _overbalanceChannel = overbalance;
+            _impactMaterial = impactMaterial;
+            _matterMaterial = matterMaterial;
+            _bloodMaterial = bloodMaterial;
+        }
+
+        /// <summary>The material floor splatters are drawn with.</summary>
+        public Material BloodMaterial => _bloodMaterial;
+
+        /// <summary>The material impact sparks are drawn with.</summary>
+        public Material ImpactMaterial => _impactMaterial;
+
+        /// <summary>The material blood and dust are drawn with.</summary>
+        public Material MatterMaterial => _matterMaterial;
+    }
+}

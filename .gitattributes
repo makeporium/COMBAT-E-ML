@@ -1,0 +1,33 @@
+# Normalise line endings so the repo is consistent across platforms.
+* text=auto eol=lf
+
+# Unity serialises these as YAML text — keep them diffable and mergeable.
+*.cs        text diff=csharp
+*.meta      text
+*.asset     text
+*.unity     text
+*.prefab    text
+*.mat       text
+*.asmdef    text
+*.inputactions text
+*.json      text
+*.md        text
+
+# Common binary asset types (none committed today, but future-proofing art integration).
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.psd   binary
+*.fbx   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
+*.ttf   binary
+*.otf   binary
+
+# Imported 3D art is binary and large; keep it out of ordinary git history.
+*.fbx       filter=lfs diff=lfs merge=lfs -text
+*.FBX       filter=lfs diff=lfs merge=lfs -text
+
+# Unity writes baked lighting data as binary despite the .asset extension; text normalisation would corrupt it.
+**/LightingData.asset binary

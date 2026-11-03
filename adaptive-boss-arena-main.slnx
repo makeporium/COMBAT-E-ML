@@ -1,0 +1,13 @@
+﻿<Solution>
+  <Project Path="AdaptiveBossArena.Player.csproj" />
+  <Project Path="AdaptiveBossArena.Utilities.csproj" />
+  <Project Path="AdaptiveBossArena.Combat.csproj" />
+  <Project Path="AdaptiveBossArena.Tests.PlayMode.csproj" />
+  <Project Path="AdaptiveBossArena.Tests.EditMode.csproj" />
+  <Project Path="AdaptiveBossArena.Editor.csproj" />
+  <Project Path="AdaptiveBossArena.Game.csproj" />
+  <Project Path="AdaptiveBossArena.Core.csproj" />
+  <Project Path="AdaptiveBossArena.UI.csproj" />
+  <Project Path="AdaptiveBossArena.AI.csproj" />
+  <Project Path="AdaptiveBossArena.Learning.csproj" />
+</Solution>

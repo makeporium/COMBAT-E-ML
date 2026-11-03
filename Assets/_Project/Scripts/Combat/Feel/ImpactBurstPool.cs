@@ -1,0 +1,128 @@
+using AdaptiveBossArena.Core.Services;
+using UnityEngine;
+
+namespace AdaptiveBossArena.Combat.Feel
+{
+    /// <summary>
+    /// A fixed set of reusable impact bursts, handed out round-robin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Instantiating an effect per hit would allocate and destroy several objects a second during a
+    /// combo, which is the classic source of a stutter that arrives exactly when the game most needs
+    /// to feel smooth. Every burst is built once at startup and reused.
+    /// </para>
+    /// <para>
+    /// Allocation is round-robin rather than first-idle. With a pool comfortably larger than the
+    /// number of hits that can overlap, the oldest entry is always the safest one to reuse, and it
+    /// avoids a scan on a path that runs in the middle of combat.
+    /// </para>
+    /// </remarks>
+    [DisallowMultipleComponent]
+    public sealed class ImpactBurstPool : MonoBehaviour
+    {
+        /// <summary>
+        /// Shader used for the particles.
+        /// </summary>
+        /// <remarks>
+        /// Additive unlit, so sparks read as light rather than as coloured paper and pick up bloom
+        /// from the post-processing volume.
+        /// </remarks>
+        private const string ParticleShaderName = "Universal Render Pipeline/Particles/Unlit";
+
+        /// <summary>Fallback for the rare case the render pipeline's particle shader is unavailable.</summary>
+        private const string FallbackShaderName = "Sprites/Default";
+
+        private const uint ScatterSeed = 0x51A7u;
+
+        [SerializeField]
+        [Range(4, 32)]
+        [Tooltip("How many impacts may be visible at once. Beyond this the oldest is recycled.")]
+        private int _capacity = 12;
+
+        private ImpactBurst[] _bursts;
+        private int _next;
+
+        /// <summary>
+        /// Builds the pool around the material its sparks are drawn with.
+        /// </summary>
+        /// <remarks>
+        /// The material is handed in, from an asset the scene references, rather than built here from
+        /// a shader looked up by name. A build only includes shaders something in it references, so a
+        /// name lookup is a shader the build was free to strip. Building one here remains only as a
+        /// fallback, and it says so when used.
+        /// </remarks>
+        /// <param name="material">The spark material, normally the generated asset.</param>
+        /// <param name="matterMaterial">The alpha-blended material blood and dust are drawn with.</param>
+        public void Construct(Material material, Material matterMaterial = null)
+        {
+            if (material == null)
+            {
+                Debug.LogWarning(
+                    "[Adaptive Boss Arena] Impact bursts were given no material and built one at runtime. " +
+                    "Its shader may be stripped from a build; re-run the scene setup.");
+
+                material = CreateParticleMaterial();
+            }
+
+            int capacity = EffectBudget.IsWebPlayer ? Mathf.Min(_capacity, EffectBudget.WebImpactBursts) : _capacity;
+            _bursts = new ImpactBurst[capacity];
+
+            // Its own seeded generator: scatter is cosmetic, so it must not draw from the one the boss's
+            // decisions are pinned to, and the global generator is off limits.
+            var random = new XorShiftRandomProvider(ScatterSeed);
+
+            for (int i = 0; i < capacity; i++)
+            {
+                var burstObject = new GameObject($"ImpactBurst_{i}");
+                burstObject.transform.SetParent(transform, worldPositionStays: false);
+
+                _bursts[i] = burstObject.AddComponent<ImpactBurst>();
+                _bursts[i].Construct(material, matterMaterial, random);
+            }
+        }
+
+        /// <summary>Plays an impact at a point in the world.</summary>
+        /// <param name="position">Where the hit landed.</param>
+        /// <param name="direction">Direction the sparks are thrown along.</param>
+        /// <param name="flavour">What kind of impact this was.</param>
+        public void Play(Vector3 position, Vector3 direction, ImpactFlavour flavour)
+        {
+            if (_bursts == null || _bursts.Length == 0)
+            {
+                return;
+            }
+
+            _bursts[_next].Play(position, direction, flavour);
+            _next = (_next + 1) % _bursts.Length;
+        }
+
+        /// <summary>Builds the one material every burst shares.</summary>
+        private static Material CreateParticleMaterial()
+        {
+            Shader shader = Shader.Find(ParticleShaderName) ?? Shader.Find(FallbackShaderName);
+
+            var material = new Material(shader)
+            {
+                name = "ImpactSparks (generated)",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            // Named through the property strings rather than a keyword helper because the two
+            // shaders above disagree about which properties exist; setting one that is absent is a
+            // no-op rather than an error, so this covers both.
+            material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 1f);
+            material.SetFloat("_ZWrite", 0f);
+            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.EnableKeyword("_EMISSION");
+
+            return material;
+        }
+    }
+}

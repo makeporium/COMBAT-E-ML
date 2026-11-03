@@ -1,0 +1,529 @@
+using AdaptiveBossArena.Combat;
+using AdaptiveBossArena.Core.Combat;
+using AdaptiveBossArena.Core.Perception;
+using AdaptiveBossArena.Core.Services;
+using AdaptiveBossArena.Core.StateMachine;
+using AdaptiveBossArena.Learning;
+using UnityEngine;
+
+namespace AdaptiveBossArena.AI.States
+{
+    /// <summary>
+    /// Performing an attack, including the lead the boss puts on it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Aim is committed during startup and then locked. The boss turns to face where it expects the
+    /// player to be, and once the swing is live it cannot correct. That is the property that makes
+    /// the whole encounter dodgeable: an attack that tracked its target through its active frames
+    /// could not be evaded by moving, only by invincibility.
+    /// </para>
+    /// <para>
+    /// The lead itself is where the dodge-prediction adaptation surfaces. At zero prediction
+    /// strength the boss aims at where it last saw the player. As the player's dash directions prove
+    /// lopsided, it begins aiming at where that habit says they are about to be. It is still aiming
+    /// at a guess, and a player who changes direction beats it.
+    /// </para>
+    /// </remarks>
+    public sealed class BossAttackState : StateBase<BossContext>
+    {
+        /// <summary>How far ahead the boss leads, in seconds of player movement, at full prediction.</summary>
+        private const float MaxLeadSeconds = 0.35f;
+
+        /// <summary>Fraction of the wind-up after which a feint is abandoned.</summary>
+        /// <remarks>
+        /// Late enough that the player has already committed to their answer, early enough that the
+        /// boss recovers before they can punish the cancellation itself.
+        /// </remarks>
+        private const float FeintCancelFraction = 0.6f;
+
+        /// <summary>
+        /// Chance each extra combo hit is taken before adaptation, so longer chains grow rarer.
+        /// </summary>
+        /// <remarks>
+        /// The untrained baseline. A boss that has learned to string blows together raises this
+        /// through <see cref="BossTuningParameter.ComboExtensionChance"/>; exposed so tests can state
+        /// the baseline rather than repeat the number.
+        /// </remarks>
+        public const float BaseComboContinueChance = 0.6f;
+
+        /// <summary>Share of a full cooldown a feint costs, since nothing was committed.</summary>
+        private const float FeintCooldownFraction = 0.45f;
+
+        private bool _isFeinting;
+        private int _comboRemaining;
+
+        /// <summary>
+        /// True once the attack — and any combo it grew into — has run its course.
+        /// </summary>
+        /// <remarks>
+        /// Reports incomplete while a follow-up is still queued, so the state machine does not hand
+        /// control to recovery between the blows of a chain.
+        /// </remarks>
+        /// <param name="context">The boss context.</param>
+        /// <returns>Whether the boss may act again.</returns>
+        public bool IsComplete(BossContext context) =>
+            !context.Attacks.IsRunning && _comboRemaining <= 0;
+
+        /// <inheritdoc />
+        protected override void OnEnter(BossContext context)
+        {
+            AttackDefinition attack = context.PendingAttack;
+
+            if (attack == null)
+            {
+                return;
+            }
+
+            // Decided before the swing begins, so the telegraph is genuinely indistinguishable from
+            // a real one. Deciding partway through would let a careful player read the difference.
+            _isFeinting = context.Random.NextBool(
+                Mathf.Clamp01(context.Tuning.Get(BossTuningParameter.FeintChance)));
+
+            // A feint is a single beat by definition; only a committed opener grows into a chain. A
+            // boss that has learned to press its combos strings more of them together.
+            _comboRemaining = _isFeinting
+                ? 0
+                : ComboLength(
+                    context.PhaseIndex,
+                    context.Random,
+                    BaseComboContinueChance +
+                    context.Tuning.Get(BossTuningParameter.ComboExtensionChance));
+
+            // A lunging or unblockable opener is a real commitment the boss can be made to regret if it
+            // misses; a light poke is not. A feint is never a commitment — nothing was thrown.
+            context.LastAttackWasCommitted = !_isFeinting && (attack.LungeSpeed > 0f || attack.Unblockable);
+
+            context.Motor.Halt();
+            context.Attacks.Begin(attack, context.DistanceToPlayer);
+        }
+
+        /// <inheritdoc />
+        protected override void OnTick(BossContext context, float deltaTime)
+        {
+            AttackDefinition attack = context.Attacks.CurrentAttack;
+
+            if (TryCancelFeint(context, attack))
+            {
+                return;
+            }
+
+            if (attack != null && context.Attacks.Phase == AttackPhase.Startup)
+            {
+                // Tracks early, then commits. The lunge keeps its speed for the whole wind-up, so its
+                // reach is unchanged, but once tracking locks it travels along the committed facing
+                // instead of re-homing every frame - which is what lets a late sidestep escape it.
+                if (attack.CanTrack(context.Attacks.Phase, context.Attacks.ElapsedSeconds))
+                {
+                    context.Motor.FaceDirection(ResolveAimDirection(context), deltaTime);
+                }
+
+                if (attack.LungeSpeed > 0f)
+                {
+                    context.Motor.SetPlanarVelocity(context.Motor.Facing * attack.LungeSpeed);
+                }
+            }
+            else if (attack != null && attack.LungeSpeed > 0f && context.Motor.Speed > context.Motor.CurrentTopSpeed)
+            {
+                // A finished wind-up brakes hard rather than sliding metres through its own strike at
+                // the boss's gentle walking deceleration.
+                context.Motor.Brake(context.Config.LungeBrakeDeceleration, deltaTime);
+            }
+            else
+            {
+                context.Motor.Decelerate(deltaTime);
+            }
+
+            context.Motor.Tick(deltaTime);
+            context.Attacks.Tick(deltaTime);
+
+            // Chained after the tick, so a swing that has just finished flows straight into its
+            // follow-up without a frame of recovery showing between them.
+            TryContinueCombo(context);
+        }
+
+        /// <inheritdoc />
+        protected override void OnExit(BossContext context)
+        {
+            if (context.Attacks.IsRunning)
+            {
+                context.Attacks.Cancel();
+            }
+
+            context.AttackCooldownRemaining = AttackCooldownFor(
+                context.CurrentPhase.AttackCooldownSeconds,
+                context.Tuning.Get(BossTuningParameter.AttackDelay),
+                _isFeinting);
+
+            _isFeinting = false;
+            _comboRemaining = 0;
+            context.PendingAttack = null;
+        }
+
+        /// <summary>
+        /// Works out how long the boss waits before it may swing again.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A feint costs less than a committed swing, which is what makes it a threat rather than a
+        /// gift. It still costs something, so a boss that feinted constantly would never actually
+        /// pressure the player.
+        /// </para>
+        /// <para>
+        /// The learned delay is what gives <c>CounterPostDodgeAggression</c> its teeth. Against a
+        /// player who strikes on reflex the instant a dodge ends, the boss holds back and lets that
+        /// reflex swing fall on empty air — which is precisely what its tell, "It waits for your
+        /// opening now.", claims it is doing. The delay is added rather than scaled so it reads as
+        /// patience layered on the phase's own rhythm instead of a different rhythm.
+        /// </para>
+        /// <para>
+        /// Pure and static so the behaviour behind that tell is verified by a test rather than by
+        /// watching the boss and forming an impression.
+        /// </para>
+        /// </remarks>
+        /// <param name="baseCooldownSeconds">The current phase's cooldown between attacks.</param>
+        /// <param name="learnedDelaySeconds">Extra patience the boss has learned, in seconds.</param>
+        /// <param name="isFeint">Whether the swing being recovered from was a feint.</param>
+        /// <returns>Seconds before the boss may attack again.</returns>
+        public static float AttackCooldownFor(
+            float baseCooldownSeconds, float learnedDelaySeconds, bool isFeint)
+        {
+            float cooldown = isFeint ? baseCooldownSeconds * FeintCooldownFraction : baseCooldownSeconds;
+
+            return cooldown + Mathf.Max(0f, learnedDelaySeconds);
+        }
+
+        /// <summary>
+        /// Decides how many extra hits a committed attack strings together.
+        /// </summary>
+        /// <remarks>
+        /// The opening phase throws single, readable strikes. Each later phase adds one to the ceiling
+        /// on extra hits, and each additional hit is a fresh coin-flip, so a two-hit string is common
+        /// by phase two and a three-hit flurry is a rare, dangerous escalation rather than the norm.
+        /// It draws from the same seeded stream as every other boss decision, so a replay is exact —
+        /// which is exactly what the edit-mode test pins down. Static and free of the context so that
+        /// property can be verified without standing up a whole boss.
+        /// </remarks>
+        /// <param name="phaseIndex">Zero-based phase; also the ceiling on extra hits.</param>
+        /// <param name="random">Seeded source, so a chain is reproducible.</param>
+        /// <param name="continueChance">
+        /// Chance each further hit is taken. Passed in rather than fixed so a boss that has learned to
+        /// press its combos actually presses them — the behaviour
+        /// <see cref="BossTuningParameter.ComboExtensionChance"/> exists to change.
+        /// </param>
+        /// <returns>Extra hits to chain, from zero to <paramref name="phaseIndex"/>.</returns>
+        public static int ComboLength(int phaseIndex, IRandomProvider random, float continueChance)
+        {
+            int maxExtra = Mathf.Max(0, phaseIndex);
+            float chance = Mathf.Clamp01(continueChance);
+            int extra = 0;
+
+            while (extra < maxExtra && random.NextBool(chance))
+            {
+                extra++;
+            }
+
+            return extra;
+        }
+
+        /// <summary>
+        /// Flows a finished swing into a queued follow-up, if the player is still there to threaten.
+        /// </summary>
+        /// <remarks>
+        /// The follow-up is drawn from the current phase's own moveset, so a combo can never use an
+        /// attack the boss was not already allowed. It is abandoned the moment the target is out of
+        /// perceived reach, because a boss swinging at empty air reads as broken, not relentless. All
+        /// of this stays behind the perception delay: the boss chains blows on stale information,
+        /// never on the player's live position.
+        /// </remarks>
+        private void TryContinueCombo(BossContext context)
+        {
+            if (context.Attacks.IsRunning || _comboRemaining <= 0)
+            {
+                return;
+            }
+
+            AttackDefinition next = PickFollowUp(context);
+            bool inReach = next != null && context.HasPerceivedPlayer &&
+                           context.DistanceToPlayer <= next.EffectiveReach;
+
+            if (!inReach)
+            {
+                _comboRemaining = 0;
+                return;
+            }
+
+            _comboRemaining--;
+
+            // A follow-up is a commitment by definition — the boss has strung itself into a chain — so
+            // a chain that swings through empty air can overbalance it just as a lunge can.
+            context.LastAttackWasCommitted = true;
+            context.Attacks.Begin(next, context.DistanceToPlayer);
+        }
+
+        /// <summary>Chooses a follow-up at random from the current phase's moveset.</summary>
+        private static AttackDefinition PickFollowUp(BossContext context)
+        {
+            AttackDefinition[] moveset = context.CurrentPhase.Attacks;
+
+            if (moveset == null || moveset.Length == 0)
+            {
+                return null;
+            }
+
+            return moveset[context.Random.NextInt(0, moveset.Length)];
+        }
+
+        /// <summary>
+        /// Abandons a feinted swing part-way through its wind-up.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is where the deflect system and the learning system finally meet. The boss only
+        /// feints once it has learned that the player answers wind-ups on a rhythm — either
+        /// deflecting or dodging predictably — and the counter to a feint is precisely to stop doing
+        /// that. A player who never developed the habit will never see one.
+        /// </para>
+        /// <para>
+        /// It is also the clearest demonstration that perception latency matters: the boss commits
+        /// to feinting before it can possibly know what the player will do, so it is guessing on the
+        /// same terms a human would.
+        /// </para>
+        /// </remarks>
+        private bool TryCancelFeint(BossContext context, AttackDefinition attack)
+        {
+            if (!_isFeinting || attack == null || context.Attacks.Phase != AttackPhase.Startup)
+            {
+                return false;
+            }
+
+            if (context.Attacks.ElapsedSeconds < attack.StartupSeconds * FeintCancelFraction)
+            {
+                return false;
+            }
+
+            context.Attacks.Cancel();
+            context.Motor.Decelerate(context.Time.DeltaTime);
+            context.Motor.Tick(context.Time.DeltaTime);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Aims at where the player was, adjusted toward where their habits suggest they will go.
+        /// </summary>
+        /// <remarks>
+        /// The extrapolation uses the perceived velocity, which is itself already stale. The boss is
+        /// therefore predicting from old information, exactly as a human opponent leading a shot
+        /// would be.
+        /// </remarks>
+        private static Vector3 ResolveAimDirection(BossContext context)
+        {
+            PlayerObservation observation = context.Perceived;
+
+            if (!observation.IsValid)
+            {
+                return context.Motor.Facing;
+            }
+
+            float predictionStrength =
+                Mathf.Clamp01(context.Tuning.Get(BossTuningParameter.DodgePredictionStrength));
+
+            Vector3 aimPoint = observation.Position +
+                               observation.Velocity * (MaxLeadSeconds * predictionStrength);
+
+            Vector3 direction = aimPoint - context.Transform.position;
+            direction.y = 0f;
+
+            return direction.sqrMagnitude > Mathf.Epsilon ? direction.normalized : context.Motor.Facing;
+        }
+    }
+
+    /// <summary>
+    /// The pause after an attack, during which the boss is open to punishment.
+    /// </summary>
+    /// <remarks>
+    /// This window is the player's entire reward for evading well, so it is a real state rather than
+    /// a flag. Its length comes from the phase definition, which is how later phases become more
+    /// oppressive without any of the boss's attacks changing.
+    /// </remarks>
+    public sealed class BossRecoverState : StateBase<BossContext>
+    {
+        /// <summary>True once the recovery window has closed and any overbalance stumble has passed.</summary>
+        /// <param name="context">The boss context.</param>
+        /// <returns>Whether the boss may act again.</returns>
+        /// <remarks>
+        /// An overbalanced boss is held here through its stumble, so a swing baited into empty air is a
+        /// real, visible opening rather than something the boss immediately acts out of.
+        /// </remarks>
+        public bool IsComplete(BossContext context) =>
+            context.AttackCooldownRemaining <= 0f && !context.IsOverbalanced;
+
+        /// <inheritdoc />
+        protected override void OnTick(BossContext context, float deltaTime)
+        {
+            // Facing continues, so the boss does not present its back for free, but it cannot move
+            // or act. Recovery has to be a genuine opening or evasion stops being worth attempting.
+            context.Motor.FaceDirection(context.DirectionToPlayer, deltaTime * 0.5f);
+            context.Motor.Decelerate(deltaTime);
+            context.Motor.Tick(deltaTime);
+        }
+    }
+
+    /// <summary>
+    /// Answering an incoming heavy attack with a parry.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The counter-behaviour the design calls for against a player who leans on heavy attacks. It is
+    /// reached only when the boss has both perceived a heavy wind-up and rolled against its learned
+    /// parry chance, so it appears gradually rather than switching on.
+    /// </para>
+    /// <para>
+    /// It is a commitment, not a shield. The boss stops, and if the read was wrong it has given the
+    /// player a free opening. That symmetry is what keeps the adaptation fair: the boss can be
+    /// baited into parrying nothing.
+    /// </para>
+    /// </remarks>
+    public sealed class BossParryState : StateBase<BossContext>
+    {
+        /// <summary>True once the parry attempt has resolved one way or the other.</summary>
+        /// <remarks>
+        /// The stance runs for its window plus its tail. It used to be a flat half-second during
+        /// which every hit was refused, which made it something to wait out rather than something
+        /// to beat: there was no moment at which committing to the stance had been the wrong call.
+        /// </remarks>
+        /// <param name="context">The boss context.</param>
+        /// <returns>Whether the boss may act again.</returns>
+        public bool IsComplete(BossContext context) =>
+            TimeInState >= context.Config.ParryWindowSeconds + context.Config.ParryTailSeconds;
+
+        /// <inheritdoc />
+        protected override void OnEnter(BossContext context)
+        {
+            context.IsParrying = true;
+            context.ParryWindowOpen = true;
+
+            // Announced the instant the window opens, and only then. The player has to be able to
+            // see what they are being asked to beat, or a parry they cannot read is indistinguishable
+            // from the boss refusing hits at random.
+            context.PublishCombatEvent(CombatEventKind.GuardRaised);
+            context.Motor.Halt();
+        }
+
+        /// <inheritdoc />
+        protected override void OnTick(BossContext context, float deltaTime)
+        {
+            context.ParryWindowOpen = TimeInState <= context.Config.ParryWindowSeconds;
+
+            context.Motor.FaceDirection(context.DirectionToPlayer, deltaTime);
+            context.Motor.Tick(deltaTime);
+        }
+
+        /// <inheritdoc />
+        protected override void OnExit(BossContext context)
+        {
+            context.IsParrying = false;
+            context.ParryWindowOpen = false;
+
+            // On its own timer, not the attack cooldown. A successful parry clears the attack
+            // cooldown to hand the boss the punish it earned - and while the two shared one timer,
+            // that also re-armed the next parry, so a boss that kept guessing right could not be
+            // attacked at all. The old flat 0.4s clamp was papering over exactly this.
+            context.ParryCooldownRemaining =
+                Mathf.Max(context.ParryCooldownRemaining, context.Config.ParryCooldownSeconds);
+        }
+    }
+
+    /// <summary>Reeling from a poise break.</summary>
+    public sealed class BossStaggerState : StateBase<BossContext>
+    {
+        private float _remainingSeconds;
+
+        private StaggerReason _reason;
+
+        /// <summary>True once the interruption has run its course.</summary>
+        /// <param name="context">The boss context.</param>
+        /// <returns>Whether the boss may act again.</returns>
+        public bool IsComplete(BossContext context) => _remainingSeconds <= 0f;
+
+        /// <inheritdoc />
+        protected override void OnEnter(BossContext context)
+        {
+            _remainingSeconds = context.RequestedStaggerSeconds;
+            _reason = context.RequestedStaggerReason;
+            context.StaggerRequested = false;
+            context.RequestedStaggerReason = StaggerReason.Hit;
+
+            context.Motor.Halt();
+
+            // Announced only when the guard actually broke. PoiseBroken throws the loudest burst and
+            // cue in the game, and firing it for a parry recoil would tell the player they had won
+            // something they had not - the parry has its own, quieter feedback at the moment of
+            // contact.
+            if (_reason == StaggerReason.PoiseBreak)
+            {
+                context.PublishCombatEvent(CombatEventKind.PoiseBroken);
+            }
+        }
+
+        /// <inheritdoc />
+        protected override void OnTick(BossContext context, float deltaTime)
+        {
+            if (context.StaggerRequested)
+            {
+                _remainingSeconds = Mathf.Max(_remainingSeconds, context.RequestedStaggerSeconds);
+                context.StaggerRequested = false;
+
+                // A poise break arriving on the same frame as a parry recoil must not be downgraded
+                // to one. Clearing the reason afterwards matters as much: left set, the next
+                // ordinary stagger would inherit it and announce the wrong thing.
+                if (context.RequestedStaggerReason > _reason)
+                {
+                    _reason = context.RequestedStaggerReason;
+
+                    if (_reason == StaggerReason.PoiseBreak)
+                    {
+                        context.PublishCombatEvent(CombatEventKind.PoiseBroken);
+                    }
+                }
+
+                context.RequestedStaggerReason = StaggerReason.Hit;
+            }
+
+            _remainingSeconds -= deltaTime;
+
+            context.Motor.Decelerate(deltaTime);
+            context.Motor.Tick(deltaTime);
+        }
+
+        /// <inheritdoc />
+        protected override void OnExit(BossContext context)
+        {
+            // Leaving a stagger with no cooldown would let the boss retaliate the instant it
+            // recovers, erasing the punish window the player earned.
+            context.AttackCooldownRemaining = Mathf.Max(context.AttackCooldownRemaining, 0.5f);
+        }
+    }
+
+    /// <summary>Defeated. A terminal state with no outgoing transitions.</summary>
+    public sealed class BossDeadState : StateBase<BossContext>
+    {
+        /// <inheritdoc />
+        protected override void OnEnter(BossContext context)
+        {
+            context.Motor.Halt();
+
+            if (context.Attacks.IsRunning)
+            {
+                context.Attacks.Cancel();
+            }
+
+            context.PublishCombatEvent(CombatEventKind.Defeated);
+        }
+
+        /// <inheritdoc />
+        protected override void OnTick(BossContext context, float deltaTime) =>
+            context.Motor.Tick(deltaTime);
+    }
+}

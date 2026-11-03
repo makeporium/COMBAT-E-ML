@@ -1,0 +1,436 @@
+using System;
+using AdaptiveBossArena.Combat;
+using AdaptiveBossArena.Core.Perception;
+using AdaptiveBossArena.Core.ScriptableObjects;
+using AdaptiveBossArena.Learning;
+using UnityEngine;
+
+namespace AdaptiveBossArena.AI
+{
+    /// <summary>Everything that changes about the boss when it enters a new phase.</summary>
+    /// <remarks>
+    /// Phases escalate by widening the repertoire and raising the adaptation rate, never by handing
+    /// the boss information it did not have. A phase-three boss reacts faster and commits harder,
+    /// but it still sees only what a phase-one boss saw.
+    /// </remarks>
+    [Serializable]
+    public struct BossPhaseDefinition
+    {
+        [SerializeField]
+        [Tooltip("Name shown in debug tooling.")]
+        private string _name;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        [Tooltip("Health fraction at or below which this phase begins.")]
+        private float _healthThreshold;
+
+        [SerializeField]
+        [Tooltip("Attacks available during this phase.")]
+        private AttackDefinition[] _attacks;
+
+        [SerializeField]
+        [Tooltip("The phase's signature attack, weighted up in selection so each phase has a " +
+                 "recognisable, readable threat. Optional; leave empty for no signature.")]
+        private AttackDefinition _signatureAttack;
+
+        [SerializeField]
+        [Range(0.5f, 2f)]
+        [Tooltip("Multiplier on movement speed for this phase.")]
+        private float _moveSpeedMultiplier;
+
+        [SerializeField]
+        [Range(0f, 3f)]
+        [Tooltip("Pause between attacks. Lower values make the phase more relentless.")]
+        private float _attackCooldownSeconds;
+
+        [SerializeField]
+        [Range(0.5f, 3f)]
+        [Tooltip("Multiplier on how quickly the boss adopts new counter-strategies in this phase.")]
+        private float _adaptationRateMultiplier;
+
+        /// <summary>Name shown in debug tooling.</summary>
+        public string Name => _name;
+
+        /// <summary>Health fraction at or below which this phase begins.</summary>
+        public float HealthThreshold => _healthThreshold;
+
+        /// <summary>Attacks available during this phase.</summary>
+        public AttackDefinition[] Attacks => _attacks;
+
+        /// <summary>The phase's signature attack, weighted up in selection, or null for none.</summary>
+        public AttackDefinition SignatureAttack => _signatureAttack;
+
+        /// <summary>Movement speed multiplier for this phase.</summary>
+        public float MoveSpeedMultiplier => _moveSpeedMultiplier;
+
+        /// <summary>Pause between attacks during this phase.</summary>
+        public float AttackCooldownSeconds => _attackCooldownSeconds;
+
+        /// <summary>Adaptation rate multiplier for this phase.</summary>
+        public float AdaptationRateMultiplier => _adaptationRateMultiplier;
+    }
+
+    /// <summary>
+    /// Every tunable value describing the boss, its phases and its capacity to learn.
+    /// </summary>
+    /// <remarks>
+    /// The baseline tuning values are the boss's behaviour before it has learned anything. The
+    /// adaptation system only ever eases these toward new targets, so this asset also defines what
+    /// the boss reverts to when a habit it was countering disappears.
+    /// </remarks>
+    [CreateAssetMenu(
+        fileName = "BossConfig",
+        menuName = "Adaptive Boss Arena/AI/Boss Config",
+        order = 1)]
+    public sealed class BossConfig : IdentifiableSO
+    {
+        [Header("Vitals")]
+        [SerializeField]
+        [Tooltip("Maximum health.")]
+        private float _maxHealth = 650f;
+
+        [SerializeField]
+        [Tooltip("Poise capacity. Enough accumulated poise damage staggers the boss and opens a punish.")]
+        private float _maxPoise = 100f;
+
+        [SerializeField]
+        [Tooltip("Poise restored per second while not being hit.")]
+        private float _poiseRegenPerSecond = 12f;
+
+        [Header("Parry")]
+        [SerializeField]
+        [Tooltip("How readily the boss answers a heavy swing with a parry before it has learned " +
+                 "anything. Small but non-zero so the duel exists from the opening; the learning " +
+                 "loop raises it against a player who leans on heavies.")]
+        [Range(0f, 1f)]
+        private float _baselineParryChance = 0.12f;
+
+        [SerializeField]
+        [Tooltip("How long after committing to the stance a hit is refused outright. Deliberately " +
+                 "tighter than the player's deflect window: the player chooses when to swing, the " +
+                 "boss only guesses.")]
+        [Range(0.05f, 0.4f)]
+        private float _parryWindowSeconds = 0.18f;
+
+        [SerializeField]
+        [Tooltip("How long the boss remains committed after the window closes. This is the punish " +
+                 "for a stance thrown at the wrong moment; hits landing here connect in full.")]
+        [Range(0.1f, 1f)]
+        private float _parryTailSeconds = 0.45f;
+
+        [SerializeField]
+        [Tooltip("Posture the boss takes off the player for a successful parry. The mirror of what " +
+                 "a clean deflect costs the boss.")]
+        private float _parryPostureDamage = 24f;
+
+        [SerializeField]
+        [Tooltip("How long before the boss may attempt another parry. Held separately from the " +
+                 "attack cooldown, which a successful parry clears.")]
+        private float _parryCooldownSeconds = 1.2f;
+
+        [Header("Movement")]
+        [SerializeField]
+        [Tooltip("Base movement speed in world units per second.")]
+        private float _moveSpeed = 5f;
+
+        [SerializeField]
+        [Tooltip("Turn rate in degrees per second. The main lever on how easily the boss is circled.")]
+        private float _turnSpeedDegreesPerSecond = 220f;
+
+        [SerializeField]
+        [Tooltip("Fraction of top speed the boss walks at while circling and measuring the player. Low, so it " +
+                 "stalks with weight instead of running laps.")]
+        [Range(0.1f, 1f)]
+        private float _stalkSpeedFraction = 0.35f;
+
+        [SerializeField]
+        [Tooltip("Metres beyond its chosen attack's reach at and past which the boss breaks into a run. Closer " +
+                 "than this it walks in.")]
+        [Min(0f)]
+        private float _approachRunDistance = 6f;
+
+        [SerializeField]
+        [Tooltip("Fraction of top speed the boss walks at when its attack is almost in reach.")]
+        [Range(0.1f, 1f)]
+        private float _approachWalkFraction = 0.45f;
+
+        [SerializeField]
+        [Tooltip("Seconds the boss's turning takes to ease up to speed. A heavy body winds into a turn instead " +
+                 "of snapping round at a constant rate.")]
+        [Range(0f, 1f)]
+        private float _turnSmoothingSeconds = 0.25f;
+
+        [SerializeField]
+        [Tooltip("How long a shove such as knockback takes to lose half its speed. Shorter than the " +
+                 "player's: the boss is heavy, and sheds a blow faster.")]
+        [Range(0.02f, 0.6f)]
+        private float _impulseHalfLifeSeconds = 0.08f;
+
+        [SerializeField]
+        [Tooltip("Seconds the boss takes to reach or shed full speed. Blunter than the player's: a heavy " +
+                 "body commits to where it is going.")]
+        [Min(0f)]
+        private float _accelerationSeconds = 0.25f;
+
+        [SerializeField]
+        [Tooltip("Speed a lunge loses per second once its wind-up ends. At 120 the Charge's 16 m/s " +
+                 "stops in about a metre instead of sliding through its strike.")]
+        [Min(0f)]
+        private float _lungeBrakeDeceleration = 120f;
+
+        [SerializeField]
+        [Tooltip("Speed into a wall, mid-lunge, at or above which the boss hurts itself. Above its " +
+                 "walking speed, so only a committed charge baited into a wall counts.")]
+        [Min(0f)]
+        private float _wallImpactSpeed = 9f;
+
+        [SerializeField]
+        [Tooltip("Poise a lunge into a wall costs the boss.")]
+        [Min(0f)]
+        private float _wallImpactPoiseDamage = 45f;
+
+        [SerializeField]
+        [Tooltip("Fraction of a blow's knockback the boss shrugs off with its stance intact.")]
+        [Range(0f, 1f)]
+        private float _knockbackResistanceAtFullPoise = 0.85f;
+
+        [SerializeField]
+        [Tooltip("Fraction of a blow's knockback the boss shrugs off while its stance is broken.")]
+        [Range(0f, 1f)]
+        private float _knockbackResistanceWhenBroken;
+
+        [SerializeField]
+        [Tooltip("Relative mass in body contact. Compared against the player's to decide who gives ground.")]
+        [Min(0.01f)]
+        private float _bodyMass = 4f;
+
+        [Header("Perception")]
+        [SerializeField]
+        [Tooltip("Reaction and perception limits. Required; without it the boss would act on the " +
+                 "current frame and read as a cheat.")]
+        private ReactionProfile _reactionProfile;
+
+        [Header("Phases")]
+        [SerializeField]
+        [Tooltip("Phase definitions in order, from full health downward.")]
+        private BossPhaseDefinition[] _phases = new BossPhaseDefinition[0];
+
+        [Header("Set Pieces")]
+        [SerializeField]
+        [Tooltip("The telegraphed unblockable shockwave the boss unleashes on a phase transition and " +
+                 "as its Resolve gambit. Optional; without it those beats are skipped.")]
+        private AttackDefinition _phaseShockwave;
+
+        [Header("Learning")]
+        [SerializeField]
+        [Tooltip("Counter-strategies the boss may develop over the course of a fight.")]
+        private CounterStrategy[] _counterStrategies = new CounterStrategy[0];
+
+        [SerializeField]
+        [Range(2f, 60f)]
+        [Tooltip("How often the behaviour profile is recomputed. Coarse on purpose, so the boss " +
+                 "responds to trends rather than to individual actions.")]
+        private float _analysisIntervalSeconds = 2.5f;
+
+        [SerializeField]
+        [Range(5f, 60f)]
+        [Tooltip("Minimum gap between adaptations taking effect, giving the player time to notice " +
+                 "and respond to each one.")]
+        private float _minSecondsBetweenAdaptations = 12f;
+
+        [SerializeField]
+        [Range(10f, 180f)]
+        [Tooltip("Half-life of the boss's memory. Habits the player abandons fade over this period, " +
+                 "which is what makes switching tactics a viable answer to being countered.")]
+        private float _memoryHalfLifeSeconds = 45f;
+
+        [Header("Resolve (Gambit)")]
+        [SerializeField]
+        [Tooltip("Resolve the boss must build before it unleashes its gambit set-piece.")]
+        private float _resolveThreshold = 100f;
+
+        [SerializeField]
+        [Tooltip("Resolve gained per second of fighting.")]
+        private float _resolveBuildPerSecond = 3.2f;
+
+        [SerializeField]
+        [Tooltip("Resolve gained each time one of the boss's own attacks whiffs — an evasive player " +
+                 "winds the gambit up faster.")]
+        private float _resolveBuildPerWhiff = 14f;
+
+        [Header("Overbalance (Reads & Punishes)")]
+        [SerializeField]
+        [Range(0f, 1f)]
+        [Tooltip("Chance a committed swing that whiffs overbalances the boss, at full commitment. " +
+                 "Scales down to zero as the boss's commitment falls to its baseline.")]
+        private float _overbalanceMaxChance = 0.6f;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        [Tooltip("Commitment below which the boss never overbalances, so minor adaptation does not " +
+                 "open it up.")]
+        private float _overbalanceIntensityThreshold = 0.15f;
+
+        [SerializeField]
+        [Range(0.2f, 3f)]
+        [Tooltip("How long the stumble lasts at full commitment, in seconds.")]
+        private float _overbalanceRecoverySeconds = 1.1f;
+
+        [SerializeField]
+        [Range(1f, 4f)]
+        [Tooltip("How much incoming poise damage is multiplied while the boss is overbalanced, so a " +
+                 "hit landed in the window rushes the posture break that opens the execution.")]
+        private float _overbalancePoiseMultiplier = 2.4f;
+
+        [Header("Baseline Tuning")]
+        [SerializeField]
+        [Tooltip("Distance the boss prefers to hold before it has learned anything.")]
+        private float _baselinePreferredRange = 3f;
+
+        [SerializeField]
+        [Range(0f, 1f)]
+        [Tooltip("Willingness to press the attack before it has learned anything.")]
+        private float _baselineAggression = 0.5f;
+
+        /// <summary>Maximum health.</summary>
+        public float MaxHealth => _maxHealth;
+
+        /// <summary>Poise capacity.</summary>
+        public float MaxPoise => _maxPoise;
+
+        /// <summary>Poise restored per second.</summary>
+        public float PoiseRegenPerSecond => _poiseRegenPerSecond;
+
+        /// <summary>Parry willingness before the boss has learned anything.</summary>
+        public float BaselineParryChance => _baselineParryChance;
+
+        /// <summary>How long the parry stance refuses hits outright.</summary>
+        public float ParryWindowSeconds => _parryWindowSeconds;
+
+        /// <summary>How long the boss stays committed after its parry window closes.</summary>
+        public float ParryTailSeconds => _parryTailSeconds;
+
+        /// <summary>Posture a successful boss parry deals to the player.</summary>
+        public float ParryPostureDamage => _parryPostureDamage;
+
+        /// <summary>How long before the boss may attempt another parry.</summary>
+        public float ParryCooldownSeconds => _parryCooldownSeconds;
+
+        /// <summary>Base movement speed.</summary>
+        public float MoveSpeed => _moveSpeed;
+
+        /// <summary>Turn rate in degrees per second.</summary>
+        public float TurnSpeedDegreesPerSecond => _turnSpeedDegreesPerSecond;
+
+        /// <summary>Half-life of an imposed shove such as knockback.</summary>
+        public float ImpulseHalfLifeSeconds => _impulseHalfLifeSeconds;
+
+        /// <summary>Seconds the boss takes to reach or shed full speed.</summary>
+        public float AccelerationSeconds => _accelerationSeconds;
+
+        /// <summary>Fraction of top speed the boss walks at while circling the player.</summary>
+        public float StalkSpeedFraction => _stalkSpeedFraction;
+
+        /// <summary>Distance beyond reach at and past which the boss runs to close in.</summary>
+        public float ApproachRunDistance => _approachRunDistance;
+
+        /// <summary>Fraction of top speed the boss walks at when its attack is almost in reach.</summary>
+        public float ApproachWalkFraction => _approachWalkFraction;
+
+        /// <summary>Seconds the boss's turning takes to ease up to speed.</summary>
+        public float TurnSmoothingSeconds => _turnSmoothingSeconds;
+
+        /// <summary>Speed a lunge loses per second once its wind-up ends.</summary>
+        public float LungeBrakeDeceleration => _lungeBrakeDeceleration;
+
+        /// <summary>Lunge speed into a wall that hurts the boss.</summary>
+        public float WallImpactSpeed => _wallImpactSpeed;
+
+        /// <summary>Poise lost to a lunge into a wall.</summary>
+        public float WallImpactPoiseDamage => _wallImpactPoiseDamage;
+
+        /// <summary>Fraction of knockback shrugged off with a full stance.</summary>
+        public float KnockbackResistanceAtFullPoise => _knockbackResistanceAtFullPoise;
+
+        /// <summary>Fraction of knockback shrugged off while the stance is broken.</summary>
+        public float KnockbackResistanceWhenBroken => _knockbackResistanceWhenBroken;
+
+        /// <summary>Relative mass in body contact.</summary>
+        public float BodyMass => _bodyMass;
+
+        /// <summary>Reaction and perception limits.</summary>
+        public ReactionProfile ReactionProfile => _reactionProfile;
+
+        /// <summary>Phase definitions in order.</summary>
+        public BossPhaseDefinition[] Phases => _phases;
+
+        /// <summary>The telegraphed unblockable shockwave for phase transitions and the gambit, or null.</summary>
+        public AttackDefinition PhaseShockwave => _phaseShockwave;
+
+        /// <summary>Counter-strategies available to the boss.</summary>
+        public CounterStrategy[] CounterStrategies => _counterStrategies;
+
+        /// <summary>How often the behaviour profile is recomputed.</summary>
+        public float AnalysisIntervalSeconds => _analysisIntervalSeconds;
+
+        /// <summary>Minimum gap between adaptations.</summary>
+        public float MinSecondsBetweenAdaptations => _minSecondsBetweenAdaptations;
+
+        /// <summary>Half-life of the boss's behavioural memory.</summary>
+        public float MemoryHalfLifeSeconds => _memoryHalfLifeSeconds;
+
+        /// <summary>Resolve required before the gambit is ready.</summary>
+        public float ResolveThreshold => _resolveThreshold;
+
+        /// <summary>Resolve gained per second of fighting.</summary>
+        public float ResolveBuildPerSecond => _resolveBuildPerSecond;
+
+        /// <summary>Resolve gained each time one of the boss's attacks whiffs.</summary>
+        public float ResolveBuildPerWhiff => _resolveBuildPerWhiff;
+
+        /// <summary>Chance a committed whiff overbalances the boss at full commitment.</summary>
+        public float OverbalanceMaxChance => _overbalanceMaxChance;
+
+        /// <summary>Commitment below which the boss never overbalances.</summary>
+        public float OverbalanceIntensityThreshold => _overbalanceIntensityThreshold;
+
+        /// <summary>Length of the overbalance stumble at full commitment, in seconds.</summary>
+        public float OverbalanceRecoverySeconds => _overbalanceRecoverySeconds;
+
+        /// <summary>Incoming-poise multiplier while the boss is overbalanced.</summary>
+        public float OverbalancePoiseMultiplier => _overbalancePoiseMultiplier;
+
+        /// <summary>Preferred range before adaptation.</summary>
+        public float BaselinePreferredRange => _baselinePreferredRange;
+
+        /// <summary>Aggression before adaptation.</summary>
+        public float BaselineAggression => _baselineAggression;
+
+        /// <summary>
+        /// Resolves which phase applies at a given health fraction.
+        /// </summary>
+        /// <param name="normalizedHealth">Boss health as a fraction of maximum.</param>
+        /// <returns>Zero-based phase index, clamped to the configured range.</returns>
+        public int ResolvePhaseIndex(float normalizedHealth)
+        {
+            if (_phases == null || _phases.Length == 0)
+            {
+                return 0;
+            }
+
+            // Phases are ordered from full health downward, so the last one whose threshold has been
+            // crossed is the active one.
+            int index = 0;
+            for (int i = 0; i < _phases.Length; i++)
+            {
+                if (normalizedHealth <= _phases[i].HealthThreshold)
+                {
+                    index = i;
+                }
+            }
+
+            return index;
+        }
+    }
+}
