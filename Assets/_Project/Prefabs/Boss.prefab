@@ -565,6 +565,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: AdaptiveBossArena.AI::AdaptiveBossArena.AI.BossController
   _config: {fileID: 11400000, guid: 6cd0524143f32284e9214a164c95025a, type: 2}
+  _aiMode: 0
   _healthChannel: {fileID: 11400000, guid: 3933468c423dca941b76e23d6c1dfa3e, type: 2}
   _phaseChannel: {fileID: 11400000, guid: c9876aba9267e2143b4605be92a83c0e, type: 2}
   _defeatChannel: {fileID: 11400000, guid: c5546605bc2ea7149bb26cd2c312490e, type: 2}

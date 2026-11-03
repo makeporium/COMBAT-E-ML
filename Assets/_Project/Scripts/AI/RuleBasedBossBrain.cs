@@ -18,6 +18,12 @@ namespace AdaptiveBossArena.AI
         /// <summary>Last rule evaluation execution time in microseconds (µs).</summary>
         public double LastExecutionTimeMicroseconds { get; private set; }
 
+        /// <summary>Human-readable name of the last rule triggered in the priority hierarchy.</summary>
+        public string LastTriggeredRule { get; private set; } = "None";
+
+        /// <summary>Display name of the last chosen attack.</summary>
+        public string LastChosenAttackName { get; private set; } = "None";
+
         /// <summary>
         /// Evaluates the priority rule chain to select the next combat action.
         /// </summary>
@@ -32,6 +38,7 @@ namespace AdaptiveBossArena.AI
             {
                 _timer.Stop();
                 LastExecutionTimeMicroseconds = _timer.Elapsed.TotalMilliseconds * 1000.0;
+                LastTriggeredRule = "Empty Catalogue";
                 return null;
             }
 
@@ -50,6 +57,7 @@ namespace AdaptiveBossArena.AI
             AttackDefinition shockwave = FindAttack(catalogue, "Shockwave", "Cataclysmic");
 
             AttackDefinition chosen = null;
+            string ruleTag = "None";
 
             // =========================================================
             // RULE-BASED PRIORITY CHAIN (EXPERT SYSTEM)
@@ -59,6 +67,7 @@ namespace AdaptiveBossArena.AI
             // Motivation: Close the distance immediately using lunging attack
             if (distance > 5.0f)
             {
+                ruleTag = "Rule 1 (Long Range: Dist > 5.0m)";
                 chosen = charge ?? shockwave ?? catalogue[0];
             }
             // [Rule 2] Exploit Vulnerability / Guard (Distance <= 3.4m)
@@ -68,18 +77,21 @@ namespace AdaptiveBossArena.AI
                                           playerAction == ObservableActionState.Healing ||
                                           playerHpNorm < 0.25f))
             {
+                ruleTag = $"Rule 2 (Punish Vulnerable/Guarding: {playerAction})";
                 chosen = perilous ?? slam ?? jab ?? catalogue[0];
             }
             // [Rule 3] Critical Health Emergency Area Denial (Distance <= 3.0m & Boss HP < 40%)
             // Motivation: Create breathing room when endangered
             else if (distance <= 3.0f && bossHpNorm < 0.40f)
             {
+                ruleTag = "Rule 3 (Low HP Defense: Boss HP < 40%)";
                 chosen = shockwave ?? slam ?? jab ?? catalogue[0];
             }
             // [Rule 4] Close Range Melee Pressure (Distance <= 2.8m)
             // Motivation: Fast strike to disrupt player wind-up
             else if (distance <= 2.8f)
             {
+                ruleTag = "Rule 4 (Close Range Melee: Dist <= 2.8m)";
                 // Alternate between fast jab and ground slam deterministically
                 chosen = (Time.frameCount % 2 == 0 ? jab : slam) ?? catalogue[0];
             }
@@ -87,17 +99,24 @@ namespace AdaptiveBossArena.AI
             // Motivation: Cover wide arc to catch sidestepping players
             else
             {
+                ruleTag = "Rule 5 (Mid Range Sweep: 2.8m < Dist <= 5.0m)";
                 chosen = sweep ?? slam ?? catalogue[0];
             }
 
             // Fallback safety to guarantee non-null from catalogue
             if (chosen == null)
             {
+                ruleTag = "Fallback (Catalogue First)";
                 chosen = catalogue[0];
             }
 
             _timer.Stop();
             LastExecutionTimeMicroseconds = _timer.Elapsed.TotalMilliseconds * 1000.0;
+            LastTriggeredRule = ruleTag;
+            LastChosenAttackName = chosen.DisplayName;
+
+            UnityEngine.Debug.Log($"<color=#00FFAA>[RULE-BASED AI]</color> <b>{ruleTag}</b> -> Executed: <b>{chosen.DisplayName}</b> (Dist: {distance:F1}m, PlayerState: {playerAction}, Latency: {LastExecutionTimeMicroseconds:F2} µs)");
+
             return chosen;
         }
 
@@ -125,7 +144,12 @@ namespace AdaptiveBossArena.AI
             if (playerHeavyAttacking && distance <= 2.8f)
             {
                 // Fixed 30% baseline chance, independent of player history
-                return context.Random.NextFloat(0f, 1f) < 0.30f;
+                bool rolled = context.Random.NextFloat(0f, 1f) < 0.30f;
+                if (rolled)
+                {
+                    UnityEngine.Debug.Log("<color=#FFAA00>[RULE-BASED AI]</color> Parry Rule Fired: Attempting deflect against incoming player heavy attack!");
+                }
+                return rolled;
             }
 
             return false;

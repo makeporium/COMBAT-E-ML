@@ -233,6 +233,9 @@ namespace AdaptiveBossArena.AI
             set => _aiMode = value;
         }
 
+        /// <summary>Direct access to the deterministic Rule-Based Expert System.</summary>
+        public RuleBasedBossBrain RuleBrain => _ruleBrain;
+
         /// <summary>Last decision latency in microseconds (µs) for academic evaluation.</summary>
         public double LastDecisionLatencyMicroseconds => _ruleBrain?.LastExecutionTimeMicroseconds ?? 0.0;
 
@@ -295,6 +298,7 @@ namespace AdaptiveBossArena.AI
 
             _isInitialised = true;
             _healthChannel?.Raise(_health.Normalized);
+            Debug.Log($"<color=#00FFAA>[BossController] ACTIVE AI ARCHITECTURE: {_aiMode} (IsRuleBased={_aiMode == BossAIMode.RuleBased})</color>");
         }
 
         /// <summary>
@@ -1238,5 +1242,23 @@ namespace AdaptiveBossArena.AI
         /// <summary>Exposes the context so the learning system can adjust tuning.</summary>
         /// <returns>The boss's context, or null before initialisation.</returns>
         public BossContext GetContext() => _context;
+
+        private void OnGUI()
+        {
+            if (!_isInitialised) return;
+
+            GUIStyle boxStyle = new GUIStyle(GUI.skin.box);
+            boxStyle.fontSize = 12;
+            boxStyle.alignment = TextAnchor.UpperLeft;
+            boxStyle.normal.textColor = Color.white;
+
+            string info = $"<b>[AI: {_aiMode.ToString().ToUpper()}]</b> (CSE3705 Baseline)\n" +
+                          $"Learning: {(_aiMode == BossAIMode.RuleBased ? "<color=#00FFAA>DISABLED (Zero Learning)</color>" : "<color=#FF5555>ACTIVE</color>")}\n" +
+                          $"Rule: {(_ruleBrain != null ? _ruleBrain.LastTriggeredRule : "Evaluating...")}\n" +
+                          $"Action: {(_ruleBrain != null ? _ruleBrain.LastChosenAttackName : "None")}\n" +
+                          $"Latency: {LastDecisionLatencyMicroseconds:F2} µs";
+
+            GUI.Box(new Rect(10, 10, 380, 85), info, boxStyle);
+        }
     }
 }
