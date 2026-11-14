@@ -816,7 +816,7 @@ namespace AdaptiveBossArena.Editor
             WeaponDefinition blade = CreateWeapon(
                 "WeaponBlade", "Blade", new Color(0.55f, 0.85f, 1f, 0.6f),
                 bladeAttacks, CreateBladeEmpoweredSpecial(), DefenceStyle.Deflect,
-                deflectWindow: 0.2f, deflectPosture: 28f,
+                deflectWindow: 0.38f, deflectPosture: 28f,
                 moveMultiplier: 1f, staminaMultiplier: 1f,
                 swingCueId: "swing.blade",
                 bladeLength: 0.95f, bladeWidth: 0.1f, bladeGlows: false);
@@ -826,7 +826,7 @@ namespace AdaptiveBossArena.Editor
             WeaponDefinition greatsword = CreateWeapon(
                 "WeaponGreatsword", "Greatsword", new Color(1f, 0.75f, 0.35f, 0.6f),
                 greatswordAttacks, CreateGreatswordEmpoweredSpecial(), DefenceStyle.HyperArmour,
-                deflectWindow: 0.2f, deflectPosture: 0f,
+                deflectWindow: 0.35f, deflectPosture: 0f,
                 moveMultiplier: 0.82f, staminaMultiplier: 1.35f,
                 swingCueId: "swing.greatsword",
                 bladeLength: 1.45f, bladeWidth: 0.19f, bladeGlows: false);
@@ -834,7 +834,7 @@ namespace AdaptiveBossArena.Editor
             WeaponDefinition energyBlade = CreateWeapon(
                 "WeaponEnergyBlade", "Energy Blade", new Color(0.7f, 1f, 0.8f, 0.6f),
                 energyAttacks, CreateEnergyEmpoweredSpecial(), DefenceStyle.SustainedGuard,
-                deflectWindow: 0.28f, deflectPosture: 16f,
+                deflectWindow: 0.42f, deflectPosture: 16f,
                 moveMultiplier: 1.12f, staminaMultiplier: 0.85f,
                 swingCueId: "swing.energy",
                 bladeLength: 0.8f, bladeWidth: 0.065f, bladeGlows: true);

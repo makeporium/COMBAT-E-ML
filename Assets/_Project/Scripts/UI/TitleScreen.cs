@@ -22,6 +22,7 @@ namespace AdaptiveBossArena.UI
     /// </para>
     /// </remarks>
     [DisallowMultipleComponent]
+    [ExecuteAlways]
     public sealed class TitleScreen : MonoBehaviour
     {
         [SerializeField]
@@ -49,6 +50,54 @@ namespace AdaptiveBossArena.UI
 #elif !UNITY_WEBGL
             Application.Quit();
 #endif
+        }
+
+        private void Awake()
+        {
+            CleanLegacyChallenges();
+        }
+
+        private void OnEnable()
+        {
+            CleanLegacyChallenges();
+        }
+
+        private void CleanLegacyChallenges()
+        {
+            // Remove legacy challenges and modifiers that are no longer used for the rule-based duel
+            string[] legacyElements = {
+                "ChallengesHeader",
+                "Fast Learner Label", "Fast Learner Toggle",
+                "No Healing Label", "No Healing Toggle",
+                "Fragile Label", "Fragile Toggle",
+                "Training Label", "Training Toggle"
+            };
+
+            foreach (string elem in legacyElements)
+            {
+                Transform directChild = transform.Find(elem);
+                if (directChild != null)
+                {
+                    directChild.gameObject.SetActive(false);
+                    if (Application.isPlaying) Destroy(directChild.gameObject);
+                    else DestroyImmediate(directChild.gameObject);
+                }
+
+                GameObject obj = GameObject.Find(elem);
+                if (obj != null)
+                {
+                    obj.SetActive(false);
+                    if (Application.isPlaying) Destroy(obj);
+                    else DestroyImmediate(obj);
+                }
+            }
+
+            var runMod = GetComponent<RunModifierMenu>();
+            if (runMod != null)
+            {
+                if (Application.isPlaying) Destroy(runMod);
+                else DestroyImmediate(runMod);
+            }
         }
 
         private void Start()

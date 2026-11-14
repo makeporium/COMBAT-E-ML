@@ -162,10 +162,11 @@ namespace AdaptiveBossArena.AI
         private BossContext _context;
         private BossAttackSelector _selector;
         private RuleBasedBossBrain _ruleBrain;
+        private MLBossBrain _mlBrain;
         private AdaptationManager _adaptation;
 
         [Header("AI Architecture")]
-        [SerializeField] private BossAIMode _aiMode = BossAIMode.RuleBased;
+        [SerializeField] private BossAIMode _aiMode = BossAIMode.MachineLearning;
         private BossResolve _resolve;
         private IRandomProvider _random;
         private OverbalanceEvaluator _overbalance;
@@ -236,8 +237,14 @@ namespace AdaptiveBossArena.AI
         /// <summary>Direct access to the deterministic Rule-Based Expert System.</summary>
         public RuleBasedBossBrain RuleBrain => _ruleBrain;
 
+        /// <summary>Direct access to the live Machine Learning Utility Agent.</summary>
+        public MLBossBrain MLBrain => _mlBrain;
+
         /// <summary>Last decision latency in microseconds (µs) for academic evaluation.</summary>
-        public double LastDecisionLatencyMicroseconds => _ruleBrain?.LastExecutionTimeMicroseconds ?? 0.0;
+        public double LastDecisionLatencyMicroseconds =>
+            _aiMode == BossAIMode.MachineLearning
+                ? (_mlBrain?.LastExecutionTimeMicroseconds ?? 0.0)
+                : (_ruleBrain?.LastExecutionTimeMicroseconds ?? 0.0);
 
         private void Awake()
         {
@@ -290,6 +297,7 @@ namespace AdaptiveBossArena.AI
 
             _selector = new BossAttackSelector(random);
             _ruleBrain = new RuleBasedBossBrain();
+            _mlBrain = new MLBossBrain();
 
             BuildLearning(random);
             BuildStateMachine();
@@ -344,10 +352,15 @@ namespace AdaptiveBossArena.AI
         /// </summary>
         private void OnCombatEventRecorded(CombatEvent combatEvent)
         {
-            // Only update adaptation habits in HeuristicLegacy mode
+            // Update adaptation habits based on active AI architecture
             if (_aiMode == BossAIMode.HeuristicLegacy)
             {
                 _adaptation.OnCombatEvent(combatEvent);
+            }
+            else if (_aiMode == BossAIMode.MachineLearning)
+            {
+                float combatTime = _time != null ? _time.CombatTime : Time.time;
+                _mlBrain?.OnCombatEvent(in combatEvent, combatTime);
             }
 
             // A whiffed boss attack means the player slipped it; that frustration winds up the gambit.
@@ -655,10 +668,17 @@ namespace AdaptiveBossArena.AI
         /// boss's posture; the swing itself carried on through the guard as though nothing had
         /// happened, which is most of why deflecting never felt like winning an exchange.
         /// </remarks>
-        private void OnOwnAttackParried() =>
+        private void OnOwnAttackParried()
+        {
+            if (_aiMode == BossAIMode.MachineLearning)
+            {
+                _mlBrain?.OnAttackParried(_context.PendingAttack);
+            }
+
             _context.RequestStagger(
                 _context.Attacks.LastParryWasStrike ? ParriedByStrikeStaggerSeconds : StaggerDurations.InterruptSeconds,
                 StaggerReason.Parried);
+        }
 
         /// <summary>
         /// How long the boss reels from a deliberate parry, against the shorter recoil a deflect causes.
@@ -875,7 +895,11 @@ namespace AdaptiveBossArena.AI
             }
 
             AttackDefinition attack;
-            if (_aiMode == BossAIMode.RuleBased)
+            if (_aiMode == BossAIMode.MachineLearning)
+            {
+                attack = _mlBrain.SelectAttack(context);
+            }
+            else if (_aiMode == BossAIMode.RuleBased)
             {
                 attack = _ruleBrain.SelectAttack(context);
             }
@@ -903,6 +927,11 @@ namespace AdaptiveBossArena.AI
         /// </remarks>
         private bool WantsToParry(BossContext context)
         {
+            if (_aiMode == BossAIMode.MachineLearning)
+            {
+                return _mlBrain.DecideParry(context);
+            }
+
             if (_aiMode == BossAIMode.RuleBased)
             {
                 return _ruleBrain.DecideParry(context);
@@ -1247,18 +1276,50 @@ namespace AdaptiveBossArena.AI
         {
             if (!_isInitialised) return;
 
+            Event e = Event.current;
+            if (e != null && e.type == EventType.KeyDown && (e.keyCode == KeyCode.F2 || e.keyCode == KeyCode.M))
+            {
+                _aiMode = (_aiMode == BossAIMode.MachineLearning) ? BossAIMode.RuleBased : BossAIMode.MachineLearning;
+                Debug.Log($"<color=#FFFF00>[AI MODE TOGGLED]</color> Boss AI is now running: <b>{_aiMode}</b>");
+            }
+
             GUIStyle boxStyle = new GUIStyle(GUI.skin.box);
-            boxStyle.fontSize = 12;
+            boxStyle.fontSize = 11;
             boxStyle.alignment = TextAnchor.UpperLeft;
             boxStyle.normal.textColor = Color.white;
 
-            string info = $"<b>[AI: {_aiMode.ToString().ToUpper()}]</b> (CSE3705 Baseline)\n" +
-                          $"Learning: {(_aiMode == BossAIMode.RuleBased ? "<color=#00FFAA>DISABLED (Zero Learning)</color>" : "<color=#FF5555>ACTIVE</color>")}\n" +
-                          $"Rule: {(_ruleBrain != null ? _ruleBrain.LastTriggeredRule : "Evaluating...")}\n" +
-                          $"Action: {(_ruleBrain != null ? _ruleBrain.LastChosenAttackName : "None")}\n" +
-                          $"Latency: {LastDecisionLatencyMicroseconds:F2} µs";
+            if (_aiMode == BossAIMode.MachineLearning && _mlBrain != null)
+            {
+                string info = $"<b><color=#00FFAA>[LIVE ML UTILITY AGENT]</color></b> (CSE3705 & CSE2032)\n" +
+                              $"<b>Player Habit:</b> {_mlBrain.InferredPlayerArchetype}\n" +
+                              $"<b>Cadence:</b> Deflect: {_mlBrain.LivePlayerDeflectRate:F2}/s | Dodge: {_mlBrain.LivePlayerDodgeRate:F2}/s | Atk: {_mlBrain.LivePlayerAttackRate:F2}/s\n" +
+                              $"<b>Online Adaptations:</b> <color=#FFD700>{_mlBrain.TotalOnlineAdaptationUpdates} live updates</color>\n" +
+                              $"<b>Chosen Action:</b> {_mlBrain.LastChosenAttackName} [{_mlBrain.LastChosenArchetype}]\n" +
+                              $"<b>Optimal Utility:</b> {_mlBrain.LastChosenUtility:F1} | Latency: {_mlBrain.LastExecutionTimeMicroseconds:F2} µs\n" +
+                              $"<b>Action Q-Values:</b> Sweep: {_mlBrain.CurrentUtilities[ActionArchetype.MeleeStrike]:F1} | Shockwave: {_mlBrain.CurrentUtilities[ActionArchetype.RangedThreat]:F1} | Slam: {_mlBrain.CurrentUtilities[ActionArchetype.HeavyCrush]:F1} | Lunge: {_mlBrain.CurrentUtilities[ActionArchetype.GapCloser]:F1}";
 
-            GUI.Box(new Rect(10, 10, 380, 85), info, boxStyle);
+                GUI.Box(new Rect(10, 10, 480, 130), info, boxStyle);
+                if (GUI.Button(new Rect(10, 145, 230, 26), "Switch to Rule-Based (Baseline)"))
+                {
+                    _aiMode = BossAIMode.RuleBased;
+                    Debug.Log("<color=#FFAA00>[AI SWITCH]</color> Switched Boss to Rule-Based Expert System.");
+                }
+            }
+            else
+            {
+                string info = $"<b><color=#FFAA00>[RULE-BASED AI]</color></b> (Academic Baseline)\n" +
+                              $"Learning: <color=#FF5555>DISABLED (Zero Learning)</color>\n" +
+                              $"Rule: {(_ruleBrain != null ? _ruleBrain.LastTriggeredRule : "Evaluating...")}\n" +
+                              $"Action: {(_ruleBrain != null ? _ruleBrain.LastChosenAttackName : "None")}\n" +
+                              $"Latency: {LastDecisionLatencyMicroseconds:F2} µs";
+
+                GUI.Box(new Rect(10, 10, 400, 95), info, boxStyle);
+                if (GUI.Button(new Rect(10, 110, 230, 26), "Switch to Live ML Agent"))
+                {
+                    _aiMode = BossAIMode.MachineLearning;
+                    Debug.Log("<color=#00FFAA>[AI SWITCH]</color> Switched Boss to Live ML Utility Agent.");
+                }
+            }
         }
     }
 }

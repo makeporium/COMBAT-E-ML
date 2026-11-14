@@ -98,6 +98,19 @@ namespace AdaptiveBossArena.Game
         /// <param name="on">Whether to force the panel visible.</param>
         public void SetForcedVisible(bool on) => _forced = on;
 
+        /// <summary>True while the debug panel is rendering.</summary>
+        public bool IsVisible => _isVisible || _forced;
+
+        /// <summary>Toggles whether the debug panel is shown.</summary>
+        public void Toggle()
+        {
+            _isVisible = !_isVisible;
+            if (_forced && !_isVisible)
+            {
+                _forced = false;
+            }
+        }
+
         private void Start()
         {
             _isVisible = _visibleOnStart;

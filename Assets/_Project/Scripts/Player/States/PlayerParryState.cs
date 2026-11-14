@@ -32,7 +32,7 @@ namespace AdaptiveBossArena.Player.States
     public sealed class PlayerParryState : StateBase<PlayerContext>
     {
         /// <summary>How long after pressing guard a hit is deflected rather than blocked.</summary>
-        public const float DeflectWindowSeconds = 0.2f;
+        public const float DeflectWindowSeconds = 0.38f;
 
         /// <summary>Shortest time the guard is held, so a tap still reads as a deliberate action.</summary>
         private const float MinimumGuardSeconds = 0.2f;
@@ -141,7 +141,7 @@ namespace AdaptiveBossArena.Player.States
     public sealed class PlayerParryStrikeState : StateBase<PlayerContext>
     {
         /// <summary>How long after the swing begins a blow is turned aside.</summary>
-        public const float WindowSeconds = 0.22f;
+        public const float WindowSeconds = 0.40f;
 
         /// <summary>The whole move, window and recovery: whiffing one leaves the player open.</summary>
         public const float DurationSeconds = 0.72f;

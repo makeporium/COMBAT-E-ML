@@ -1,0 +1,201 @@
+%-------------------------
+% Professional ATS-Optimized Resume in LaTeX
+% Candidate : Ayush Shrivastava
+% Target Roles : Full-Stack Engineer / Software Development Engineer (SDE) / AI Engineer
+%-----------------------------------------
+
+\documentclass[letterpaper,10pt]{article}
+
+\usepackage{latexsym}
+\usepackage[letterpaper,left=0.45in,right=0.45in,top=0.35in,bottom=0.35in]{geometry}
+\usepackage{marvosym}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks,pdfnewwindow=true]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\usepackage{fontawesome5}
+\usepackage{charter}
+
+% Page styling
+\pagestyle{empty}
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Section Titles: Bulletproof layout guaranteeing rules directly below heading text
+\makeatletter
+\renewcommand{\section}{\@ifstar\@sectionStar\@sectionNoStar}
+\newcommand{\@sectionStar}[1]{%
+  \par\vspace{4.5pt}%
+  {\large\bfseries\scshape #1}%
+  \par\vspace{2.5pt}%
+  \hrule height 0.5pt%
+  \par\vspace{3.5pt}%
+}
+\newcommand{\@sectionNoStar}[1]{%
+  \par\vspace{4.5pt}%
+  {\large\bfseries\scshape #1}%
+  \par\vspace{2.5pt}%
+  \hrule height 0.5pt%
+  \par\vspace{3.5pt}%
+}
+\makeatother
+
+% Ensure machine-readability for ATS parsers
+\pdfgentounicode=1
+
+% Custom command macros
+\newcommand{\resumeItem}[1]{
+  \item\small{{#1}}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \textbf{\small #2} \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-2pt}
+}
+
+% Project heading macro
+\newcommand{\resumeProjectHeading}[5]{
+  \item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{\normalsize #1} \hspace{4pt}$|$\hspace{4pt} \small #2 \hspace{6pt} #3 & \textbf{\small #4} \\
+    \end{tabular*}\vspace{-2pt}
+    \par\noindent\textit{\small \textbf{Technologies:} #5}\vspace{2pt}
+}
+
+% Experience / Freelance heading macro
+\newcommand{\resumeExpHeading}[5]{
+  \item
+    \begin{tabular*}{\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} \hspace{6pt} #2 & \textbf{\small #3} \\
+      \textit{\small#4} & \textit{\small} \\
+    \end{tabular*}\vspace{-2pt}
+    \par\noindent\textit{\small \textbf{Technologies:} #5}\vspace{2pt}
+}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}, topsep=1pt, itemsep=2.5pt]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}\vspace{-2pt}}
+
+\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=0.15in, itemsep=1.5pt, topsep=1.5pt, parsep=0pt, partopsep=0pt]}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{0pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    {\LARGE \scshape \textbf{Ayush Shrivastava}} \\ \vspace{3pt}
+    \small 
+    \href{mailto:work.ayushshri@gmail.com}{work.ayushshri@gmail.com} \quad$|$\quad
+    +91 9770435848 \quad$|$\quad
+    LinkedIn: \href{https://www.linkedin.com/in/ayush-shrivastava-9439a232b/}{linkedin.com/in/ayush-shrivastava-9439a232b} \quad$|$\quad
+    GitHub: \href{https://github.com/MakePorium}{github.com/MakePorium} \quad$|$\quad
+    LeetCode: \href{https://leetcode.com/u/MakePorium/}{leetcode.com/u/MakePorium}
+\end{center}
+\vspace{-4pt}
+
+%-----------PROFESSIONAL SUMMARY-----------
+\section{Professional Summary}
+\small{Third-year B.Tech Computer Science student (2028) with experience developing and deploying production web applications, backend services, and AI-powered systems. Proficient in C++, TypeScript, Python, React, and PostgreSQL, with hands-on experience in client projects and cloud infrastructure.}
+
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+\begin{itemize}[leftmargin=0.0in, label={}, topsep=1pt, itemsep=1.5pt]
+    \small{\item{
+     \textbf{Languages}{: C++, Python, TypeScript, JavaScript, SQL} \\ \vspace{1pt}
+     \textbf{Backend}{: Node.js, FastAPI, REST APIs, WebSockets, Authentication (JWT, OAuth)} \\ \vspace{1pt}
+     \textbf{Frontend}{: React, TanStack Router, Tailwind CSS, HTML/CSS} \\ \vspace{1pt}
+     \textbf{Databases \& Cloud}{: PostgreSQL, Supabase, AWS (EC2, S3), Vercel, Terraform} \\ \vspace{1pt}
+     \textbf{Tools \& Concepts}{: Git, GitHub, CI/CD, DSA, OOP, DBMS, OS, Computer Networks}
+    }}
+\end{itemize}
+\vspace{-3pt}
+
+%-----------FREELANCE / CLIENT WORK-----------
+\section{Freelance / Client Work}
+\resumeSubHeadingListStart
+
+    \resumeExpHeading
+      {Freelance Full-Stack Developer}
+      {\href{https://www.nkbregovanta.com/}{\small\faIcon{external-link-alt}\ Live Website}}
+      {2025 -- Present}
+      {NKB Regovanta Solutions Pvt. Ltd. (Global Medical Device \& Regulatory Consulting Firm)}
+      {React 19, TypeScript, TanStack Start, TanStack Router, Nitro, Tailwind CSS v4, Radix UI, Vite, Zod}
+      \resumeItemListStart
+        \resumeItem{Build and maintain a \textbf{241+ page} production website for a global medical-device regulatory consulting firm serving clients including \textbf{Roche, Abbott,} and \textbf{Pfizer}.}
+        \resumeItem{Develop an automated content pipeline using \textbf{Node.js} and \textbf{Cheerio} that daily scrapes, summarizes, and publishes industry news, reducing manual editorial effort by \textbf{85\%+}.}
+        \resumeItem{Implement complete technical SEO (OpenGraph cards, dynamic sitemaps, canonical tags) and cross-device performance optimization on \textbf{Vercel}; enforce strictly typed component architecture via \textbf{Radix UI} and \textbf{Zod}.}
+      \resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+%-----------PROJECTS-----------
+\section{Featured Projects}
+\resumeSubHeadingListStart
+
+    \resumeProjectHeading
+        {Examantic}
+        {Behavioral AI for JEE Error Diagnosis}
+        {\href{https://edu-insights-hub.vercel.app/}{\small\faIcon{external-link-alt}\ Live Demo}}
+        {Jan 2026 -- Present}
+        {React 19, TypeScript, TanStack Start, Nitro, Supabase/PostgreSQL, Gemini API, OCR, @xyflow/react}
+        \resumeItemListStart
+            \resumeItem{Built a root-cause diagnostic engine addressing the limitation of standard exam platforms (which flag incorrect answers without explaining error causes); analyzed within-test telemetry (time spent, revisits, skips, answer revisions) alongside LLM distractor intelligence to isolate conceptual gaps, calculation slips, formula misconceptions, and guessing.}
+            \resumeItem{Implemented adaptive diagnostic clarification generating targeted follow-up questions when competing error hypotheses lack conclusive evidence; integrated SM-2 spaced repetition with topic mastery and cross-test pattern tracking to isolate persistent weaknesses.}
+            \resumeItem{Constructed a concept-dependency knowledge graph (subject $\rightarrow$ chapter $\rightarrow$ topic DAG) for revision drill-downs; deployed a 15-student pilot across 75- and 30-question exams, achieving \textbf{88\% agreement} between system diagnoses and student-verified error causes.}
+        \resumeItemListEnd
+
+    \resumeProjectHeading
+        {TerraFormancer}
+        {Autonomous AI Infrastructure Agent}
+        {\href{https://github.com/UnityNimit/TerraFormancer}{\small\faGithub\ GitHub}}
+        {Dec 2024}
+        {Python, FastAPI, LangGraph, Terraform (IaC), AWS, React, Tailwind CSS}
+        \resumeItemListStart
+            \resumeItem{Awarded \textbf{2nd Rank at Assessli National Hackathon} for developing an autonomous AI agent that converts natural language/voice directives into validated, deployable multi-tier \textbf{AWS} infrastructure (VPC, EC2, RDS, S3) via automated \textbf{Terraform (IaC)}.}
+            \resumeItem{Engineered a multi-step \textbf{LangGraph} pipeline resolving circular dependencies and validating security constraints; built a streaming \textbf{FastAPI} backend and interactive architecture canvas, reducing manual cloud topology authoring time by \textbf{70\%+}.}
+        \resumeItemListEnd
+
+    \resumeProjectHeading
+        {MakeCommand}
+        {Personal Productivity Platform}
+        {\href{https://personal-command.vercel.app/}{\small\faIcon{external-link-alt}\ Live Demo} \hspace{4pt}$|$\hspace{4pt} \href{https://github.com/makeporium/MakeCommand}{\small\faGithub\ GitHub}}
+        {Aug 2024}
+        {React, TypeScript, Supabase (PostgreSQL), Tailwind CSS, Figma}
+        \resumeItemListStart
+            \resumeItem{Engineered a unified productivity suite integrating task management, calendar scheduling, and Markdown notes with sub-50ms cross-session sync via \textbf{Supabase}; built a modular \textbf{React + TypeScript} architecture with custom hooks.}
+            \resumeItem{Implemented optimistic UI updates and resilient offline caching, delivering a seamless sub-second workflow experience across desktop and mobile devices.}
+        \resumeItemListEnd
+
+\resumeSubHeadingListEnd
+
+%-----------ACHIEVEMENTS-----------
+\section{Honors \& Achievements}
+\begin{itemize}[leftmargin=0.15in, itemsep=1.5pt, topsep=1.5pt]
+    \resumeItem{\textbf{2nd Rank --- Assessli National Hackathon (2024):} Built and demonstrated TerraFormancer end-to-end among national participants.}
+    \resumeItem{\textbf{5-Star C++ Developer --- HackerRank:} Gold badge credential for advanced algorithmic problem-solving.}
+    \resumeItem{\textbf{200+ Problems Solved --- LeetCode:} Consistent problem-solving practice across core algorithms and data structures.}
+\end{itemize}
+\vspace{-2pt}
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {BML Munjal University}{Gurugram, Haryana}
+      {Bachelor of Technology in Computer Science and Engineering (CGPA: 8.50 / 10.0)}{2024 -- 2028}
+  \resumeSubHeadingListEnd
+
+%-------------------------------------------
+\end{document}

@@ -39,6 +39,19 @@ namespace AdaptiveBossArena.UI
         // toggle does not immediately re-save it as if the player had clicked it.
         private bool _loading;
 
+        private void Awake()
+        {
+            // Legacy challenges disabled for rule-based duel - ensure unmodded default settings
+            RunSettings.Current = new RunModifiers();
+
+            if (_fastLearnerToggle != null) Destroy(_fastLearnerToggle.gameObject);
+            if (_noHealingToggle != null) Destroy(_noHealingToggle.gameObject);
+            if (_fragileToggle != null) Destroy(_fragileToggle.gameObject);
+            if (_trainingToggle != null) Destroy(_trainingToggle.gameObject);
+
+            Destroy(this);
+        }
+
         private void Start()
         {
             _saveService = ServiceRegistry.Current != null &&

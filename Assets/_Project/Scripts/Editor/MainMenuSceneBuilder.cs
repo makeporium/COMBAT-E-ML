@@ -145,65 +145,9 @@ namespace AdaptiveBossArena.Editor
                 Path.GetFileNameWithoutExtension(EditorMenus.ArenaScenePath),
                 quit != null ? quit.gameObject : null);
 
-            BuildModifiers(root, canvasObject);
-
             // Raised after the buttons exist. Unity draws later siblings on top, so a panel built
             // before them would otherwise have the title's buttons showing straight through it.
             settings.RaiseToTop();
-        }
-
-        private const float ModifierColumnX = -640f;
-        private const float ModifierToggleOffset = 232f;
-        private const float ModifierRowSpacing = 52f;
-        private static readonly Color ModifierAccent = new Color(0.72f, 0.2f, 0.08f);
-        private static readonly Color ModifierHeaderColor = new Color(0.78f, 0.7f, 0.6f);
-
-        /// <summary>
-        /// Builds the challenge-modifier column: a labelled toggle per rule, saved as it is changed.
-        /// </summary>
-        /// <remarks>
-        /// Shown directly on the title rather than behind a button, so a player browsing the front
-        /// door discovers that the fight can be made harder — or turned into a place to practise —
-        /// without going looking for it.
-        /// </remarks>
-        private static void BuildModifiers(Transform root, GameObject canvasObject)
-        {
-            float y = 120f;
-
-            Text header = UiBuilder.CreateText(root, "ChallengesHeader", "CHALLENGES", 24, TextAnchor.MiddleLeft);
-            header.rectTransform.anchoredPosition = new Vector2(ModifierColumnX, y);
-            header.rectTransform.sizeDelta = new Vector2(360f, 34f);
-            header.fontStyle = FontStyle.Bold;
-            header.color = ModifierHeaderColor;
-            y -= ModifierRowSpacing;
-
-            Toggle fastLearner = ModifierToggle(root, "Fast Learner", ref y);
-            Toggle noHealing = ModifierToggle(root, "No Healing", ref y);
-            Toggle fragile = ModifierToggle(root, "Fragile", ref y);
-            Toggle training = ModifierToggle(root, "Training", ref y);
-
-            var menu = canvasObject.AddComponent<RunModifierMenu>();
-            menu.Bind(fastLearner, noHealing, fragile, training);
-
-            UnityEventTools.AddPersistentListener(fastLearner.onValueChanged, menu.SetFastLearner);
-            UnityEventTools.AddPersistentListener(noHealing.onValueChanged, menu.SetNoHealing);
-            UnityEventTools.AddPersistentListener(fragile.onValueChanged, menu.SetFragile);
-            UnityEventTools.AddPersistentListener(training.onValueChanged, menu.SetTraining);
-        }
-
-        /// <summary>Creates a left-aligned caption and its toggle, advancing the running y.</summary>
-        private static Toggle ModifierToggle(Transform parent, string caption, ref float y)
-        {
-            Text label = UiBuilder.CreateText(parent, $"{caption} Label", caption, 24, TextAnchor.MiddleLeft);
-            label.rectTransform.anchoredPosition = new Vector2(ModifierColumnX, y);
-            label.rectTransform.sizeDelta = new Vector2(300f, 34f);
-            label.color = SubtitleColor;
-
-            Toggle toggle = UiBuilder.CreateToggle(
-                parent, $"{caption} Toggle", new Vector2(ModifierColumnX + ModifierToggleOffset, y), ModifierAccent);
-
-            y -= ModifierRowSpacing;
-            return toggle;
         }
 
         /// <summary>Creates the scaling canvas and an event system that reads the new Input System.</summary>

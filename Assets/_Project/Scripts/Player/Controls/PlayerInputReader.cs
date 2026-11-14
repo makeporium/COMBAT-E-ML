@@ -73,6 +73,20 @@ namespace AdaptiveBossArena.Player.Controls
                 return kb || gp;
             }
 
+            if (action == PlayerInputAction.Parry)
+            {
+                if (resolved != null && resolved.WasPressedThisFrame())
+                {
+                    return true;
+                }
+
+                // Right click triggers parry, plus 'Q' and Gamepad shoulder buttons
+                bool mouse = Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame;
+                bool kb = Keyboard.current != null && Keyboard.current.qKey.wasPressedThisFrame;
+                bool gp = Gamepad.current != null && (Gamepad.current.rightShoulder.wasPressedThisFrame || Gamepad.current.leftShoulder.wasPressedThisFrame);
+                return mouse || kb || gp;
+            }
+
             if (resolved == null || !resolved.WasPressedThisFrame())
             {
                 return false;
@@ -109,6 +123,19 @@ namespace AdaptiveBossArena.Player.Controls
                 bool kb = Keyboard.current != null && (Keyboard.current.fKey.isPressed || Keyboard.current.leftAltKey.isPressed);
                 bool gp = Gamepad.current != null && Gamepad.current.buttonSouth.isPressed;
                 return kb || gp;
+            }
+
+            if (action == PlayerInputAction.Parry)
+            {
+                if (resolved != null && resolved.IsPressed())
+                {
+                    return true;
+                }
+
+                bool mouse = Mouse.current != null && Mouse.current.rightButton.isPressed;
+                bool kb = Keyboard.current != null && Keyboard.current.qKey.isPressed;
+                bool gp = Gamepad.current != null && (Gamepad.current.rightShoulder.isPressed || Gamepad.current.leftShoulder.isPressed);
+                return mouse || kb || gp;
             }
 
             return resolved != null && resolved.IsPressed();

@@ -42,8 +42,6 @@ MonoBehaviour:
   _dashCancelFraction: 0.7
   _weapons:
   - {fileID: 11400000, guid: 2431a21a84cf23d4abd5c018405a4040, type: 2}
-  - {fileID: 11400000, guid: 052f41240908e9146a0bfdd63dad6973, type: 2}
-  - {fileID: 11400000, guid: 89a83304c3ac42149bf9d1c4f1d3b3cd, type: 2}
   _lightComboChain:
   - {fileID: 11400000, guid: b612f7e88df49f04e9a415fa54141bd4, type: 2}
   - {fileID: 11400000, guid: 1400dc5f7369ad747a87d9cb94217ca0, type: 2}

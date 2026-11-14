@@ -403,6 +403,17 @@
                 },
                 {
                     "name": "",
+                    "id": "e6a14781-a83d-4c3d-b452-19e078ba1925",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Parry",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "0946623b-ae28-4793-a845-e0b7438fb126",
                     "path": "<Keyboard>/q",
                     "interactions": "",

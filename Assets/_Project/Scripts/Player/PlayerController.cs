@@ -668,14 +668,15 @@ namespace AdaptiveBossArena.Player
             _machine.AddTransition(_healState, _moveState, HealFinishedWithInput);
             _machine.AddTransition(_healState, _idleState, HealFinished);
 
-            // The guard can be left for a roll or a swing at any moment, not only by letting go. Only letting go
-            // is held to the deflect window's length, so a quick tap still deflects.
+            // The guard can be left for a roll, swing, or parry strike at any moment.
             _machine.AddTransition(_parryState, _dashState, WantsToDash, DashTransitionPriority);
+            _machine.AddTransition(_parryState, _parryStrikeState, WantsToParry, ParryTransitionPriority);
             _machine.AddTransition(_parryState, _attackState, WantsToAttack, AttackTransitionPriority);
             _machine.AddTransition(_parryState, _moveState, GuardDroppedWithInput);
             _machine.AddTransition(_parryState, _idleState, GuardDropped);
 
-            // A parry runs to its end: whiffing one has to be punishable, or it would simply be a better guard.
+            // A parry runs to its active/recovery end: if guard is still held, smoothly transition to guard; otherwise move/idle.
+            _machine.AddTransition(_parryStrikeState, _parryState, ParryFinishedIntoGuard, GuardTransitionPriority);
             _machine.AddTransition(_parryStrikeState, _moveState, ParryFinishedWithInput);
             _machine.AddTransition(_parryStrikeState, _idleState, ParryFinished);
 
@@ -848,6 +849,11 @@ namespace AdaptiveBossArena.Player
 
         private bool ParryFinished(PlayerContext context) => _parryStrikeState.IsComplete(context);
 
+        private bool ParryFinishedIntoGuard(PlayerContext context) =>
+            _parryStrikeState.IsComplete(context) &&
+            context.Input != null &&
+            context.Input.IsHeld(PlayerInputAction.Guard);
+
         private bool ParryFinishedWithInput(PlayerContext context) =>
             _parryStrikeState.IsComplete(context) && context.HasMoveInput;
 
@@ -901,22 +907,8 @@ namespace AdaptiveBossArena.Player
         /// </remarks>
         private void TrySwapWeapon()
         {
-            WeaponDefinition[] weapons = _config.Weapons;
-
-            if (weapons == null || weapons.Length < 2)
-            {
-                return;
-            }
-
-            bool isFree = _machine.CurrentState == _idleState || _machine.CurrentState == _moveState;
-
-            if (!isFree || !_context.InputBuffer.TryConsume(PlayerInputAction.SwapWeapon, _time.CombatTime))
-            {
-                return;
-            }
-
-            _weaponIndex = (_weaponIndex + 1) % weapons.Length;
-            EquipWeapon(weapons[_weaponIndex]);
+            // Single weapon mode: weapon swapping is disabled so all combat telemetry is strictly consistent
+            return;
         }
 
         /// <summary>Draws a weapon and announces it.</summary>
@@ -1096,7 +1088,6 @@ namespace AdaptiveBossArena.Player
             _parryStrikeState.IsWindowOpen &&
             !damage.Unblockable &&
             !damage.Unparryable &&
-            damage.Type != DamageType.BossProjectile &&
             damage.Type != DamageType.Hazard;
 
         /// <summary>

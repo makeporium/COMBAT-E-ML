@@ -90,8 +90,12 @@ namespace AdaptiveBossArena.Editor
             BuildButton(map, InputActionNames.LightAttack, "<Mouse>/leftButton", "<Gamepad>/buttonWest");
             BuildHeavyAttack(map);
 
-            // The parry: a committed strike of its own, not a well-timed guard, so it has its own key.
-            BuildButton(map, InputActionNames.Parry, "<Keyboard>/q", "<Gamepad>/rightShoulder");
+            // The parry: bound to Right Mouse Button as well as Q and gamepad shoulder buttons.
+            InputAction parry = map.AddAction(InputActionNames.Parry, InputActionType.Button);
+            parry.AddBinding("<Mouse>/rightButton", groups: KeyboardMouseScheme);
+            parry.AddBinding("<Keyboard>/q", groups: KeyboardMouseScheme);
+            parry.AddBinding("<Gamepad>/rightShoulder", groups: GamepadScheme);
+            parry.AddBinding("<Gamepad>/leftShoulder", groups: GamepadScheme);
 
             // E, not Q: Q is the parry.
             BuildButton(map, InputActionNames.Special, "<Keyboard>/e", "<Gamepad>/buttonNorth");

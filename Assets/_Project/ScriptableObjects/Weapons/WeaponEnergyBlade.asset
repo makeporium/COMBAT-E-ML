@@ -28,7 +28,7 @@ MonoBehaviour:
   _empoweredSpecialAttack: {fileID: 11400000, guid: d95173ff38412924ca299a40843c32b2, type: 2}
   _riposteAttack: {fileID: 11400000, guid: 817e8f6a6ab3fd247b3803288036af66, type: 2}
   _defence: 2
-  _deflectWindowSeconds: 0.28
+  _deflectWindowSeconds: 0.42
   _deflectPostureDamage: 16
   _moveSpeedMultiplier: 1.12
   _staminaCostMultiplier: 0.85

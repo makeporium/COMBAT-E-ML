@@ -97,9 +97,9 @@ namespace AdaptiveBossArena.Combat
         private DefenceStyle _defence = DefenceStyle.Deflect;
 
         [SerializeField]
-        [Range(0.05f, 0.4f)]
-        [Tooltip("Deflect window. Shorter is more demanding and, by design, more rewarding.")]
-        private float _deflectWindowSeconds = 0.15f;
+        [Range(0.05f, 0.6f)]
+        [Tooltip("Deflect window. More frames make timing more forgiving and reliable.")]
+        private float _deflectWindowSeconds = 0.35f;
 
         [SerializeField]
         [Tooltip("Posture dealt to the attacker by a clean deflect with this weapon.")]

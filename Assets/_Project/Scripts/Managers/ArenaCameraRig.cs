@@ -93,6 +93,16 @@ namespace AdaptiveBossArena.Game
         [Tooltip("Half-life of the heading swinging round to the boss while locked on.")]
         private float _lockOnHeadingHalfLife = 0.1f;
 
+        [SerializeField]
+        [Range(0.1f, 1.2f)]
+        [Tooltip("Half-life of the vertical pitch tracking the boss while locked on (Sekiro style slow vertical).")]
+        private float _lockOnPitchHalfLife = 0.45f;
+
+        [SerializeField]
+        [Range(0.05f, 1f)]
+        [Tooltip("Multiplier on manual vertical mouse look while locked on, to prevent camera whipping.")]
+        private float _lockOnVerticalInputDamping = 0.2f;
+
         [Header("Third Person")]
         [SerializeField]
         [Range(2f, 12f)]
@@ -268,22 +278,39 @@ namespace AdaptiveBossArena.Game
         private void UpdateOrbit(float deltaTime)
         {
             Vector2 turn = LookDelta(deltaTime);
-            _orbitPitchDegrees = Mathf.Clamp(_orbitPitchDegrees - turn.y, _minimumPitchDegrees, _maximumPitchDegrees);
 
             if (IsLockedOn)
             {
-                Vector3 toBoss = _secondaryTarget.position - _primaryTarget.position;
-                toBoss.y = 0f;
+                // In Sekiro lock-on: slow manual vertical mouse adjustment to prevent camera whipping
+                _orbitPitchDegrees = Mathf.Clamp(
+                    _orbitPitchDegrees - turn.y * _lockOnVerticalInputDamping,
+                    _minimumPitchDegrees,
+                    _maximumPitchDegrees);
 
-                if (toBoss.sqrMagnitude > Mathf.Epsilon)
+                Vector3 toBoss = _secondaryTarget.position - _primaryTarget.position;
+                Vector3 toBossHorizontal = toBoss;
+                toBossHorizontal.y = 0f;
+
+                if (toBossHorizontal.sqrMagnitude > Mathf.Epsilon)
                 {
-                    float target = HeadingDegrees(toBoss);
-                    _yawDegrees = Mathf.LerpAngle(_yawDegrees, target, DampFactor(_lockOnHeadingHalfLife, deltaTime));
+                    // Horizontal heading tracks the enemy
+                    float targetYaw = HeadingDegrees(toBossHorizontal);
+                    _yawDegrees = Mathf.LerpAngle(_yawDegrees, targetYaw, DampFactor(_lockOnHeadingHalfLife, deltaTime));
+
+                    // Vertical framing: slow, subtle pitch tracking toward the opponent
+                    float dist2D = Mathf.Max(1.5f, toBossHorizontal.magnitude);
+                    float heightDiff = (_secondaryTarget.position.y + 1.2f) - (_primaryTarget.position.y + 1.0f);
+                    float targetPitch = _pitchDegrees - Mathf.Atan2(heightDiff, dist2D) * Mathf.Rad2Deg;
+                    targetPitch = Mathf.Clamp(targetPitch, _minimumPitchDegrees, _maximumPitchDegrees);
+
+                    // Smooth, gentle vertical interpolation — never jerking up and down when either fighter leaps
+                    _orbitPitchDegrees = Mathf.Lerp(_orbitPitchDegrees, targetPitch, DampFactor(_lockOnPitchHalfLife, deltaTime));
                 }
 
                 return;
             }
 
+            _orbitPitchDegrees = Mathf.Clamp(_orbitPitchDegrees - turn.y, _minimumPitchDegrees, _maximumPitchDegrees);
             _yawDegrees += turn.x;
         }
 
