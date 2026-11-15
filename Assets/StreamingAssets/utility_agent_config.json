@@ -1,0 +1,58 @@
+{
+    "agent_type": "UtilityBasedLearningAgent",
+    "course_alignment": "CSE3705 Artificial Intelligence & CSE2032 Machine Learning",
+    "decision_rule": "argmax_a [ P(Hit | s, a) * BaseDamage(a) - lambda * P(Parry | s, a) * PostureLoss ]",
+    "lambda_risk_penalty": 1.25,
+    "parry_posture_loss": 45.0,
+    "online_learning_rate": 0.25,
+    "softmax_temperature": 3.5,
+    "ranged_min_cooldown": 5.0,
+    "heavy_crush_min_cooldown": 3.5,
+    "repetition_penalty_per_repeat": 16.0,
+    "base_damages": {
+        "MeleeStrike": 25.0,
+        "RangedThreat": 18.0,
+        "GapCloser": 15.0,
+        "HeavyCrush": 45.0
+    },
+    "stamina_costs": {
+        "MeleeStrike": 10.0,
+        "RangedThreat": 8.0,
+        "GapCloser": 12.0,
+        "HeavyCrush": 25.0
+    },
+    "posture_penalties": {
+        "MeleeStrike": 40.0,
+        "RangedThreat": 0.0,
+        "GapCloser": 20.0,
+        "HeavyCrush": 15.0
+    },
+    "hit_priors": {
+        "MeleeStrike": 0.2342,
+        "RangedThreat": 0.5199,
+        "GapCloser": 0.1058,
+        "HeavyCrush": 0.4218
+    },
+    "parry_priors": {
+        "MeleeStrike": 0.2601,
+        "RangedThreat": 0.0159,
+        "GapCloser": 0.0511,
+        "HeavyCrush": 0.1034
+    },
+    "archetypes": [
+        "MeleeStrike",
+        "RangedThreat",
+        "GapCloser",
+        "HeavyCrush"
+    ],
+    "hit_roc_auc": 0.8189,
+    "parry_roc_auc": 0.9015,
+    "training_samples": {
+        "MeleeStrike": 1657,
+        "RangedThreat": 881,
+        "GapCloser": 548,
+        "HeavyCrush": 358,
+        "total": 3444
+    },
+    "playtesters": ["shivam_new", "sivam", "swam", "sidd"]
+}

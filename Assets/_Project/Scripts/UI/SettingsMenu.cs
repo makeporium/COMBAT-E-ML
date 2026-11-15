@@ -81,6 +81,7 @@ namespace AdaptiveBossArena.UI
         private InputActionMap _gameplayMap;
         private RebindButton[] _rebindRows;
         private InputActionRebindingExtensions.RebindingOperation _activeRebind;
+        private Coroutine _rebindCoroutine;
 
         // Set while control values are being written from loaded data, so the resulting change
         // callbacks do not treat a programmatic sync as a player edit and save over themselves.
@@ -252,10 +253,11 @@ namespace AdaptiveBossArena.UI
             controlsHeader.color = SectionHeaderColor;
             rightY -= 48f;
 
+            CreateRebindRow(_panel.transform, "Light Attack", "LightAttack", this, 160f, 400f, ref rightY);
+            CreateRebindRow(_panel.transform, "Guard / Deflect", "Guard", this, 160f, 400f, ref rightY);
+            CreateRebindRow(_panel.transform, "Parry Strike", "Parry", this, 160f, 400f, ref rightY);
             CreateRebindRow(_panel.transform, "Dash / Dodge", "Dash", this, 160f, 400f, ref rightY);
             CreateRebindRow(_panel.transform, "Jump", "Jump", this, 160f, 400f, ref rightY);
-            CreateRebindRow(_panel.transform, "Parry Strike", "Parry", this, 160f, 400f, ref rightY);
-            CreateRebindRow(_panel.transform, "Guard / Deflect", "Guard", this, 160f, 400f, ref rightY);
             CreateRebindRow(_panel.transform, "Special Ability", "Special", this, 160f, 400f, ref rightY);
             CreateRebindRow(_panel.transform, "Heal Flask", "Heal", this, 160f, 400f, ref rightY);
             CreateRebindRow(_panel.transform, "Lock On Target", "LockOn", this, 160f, 400f, ref rightY);
@@ -612,6 +614,17 @@ namespace AdaptiveBossArena.UI
         /// <summary>Hides the settings panel.</summary>
         public void Close()
         {
+            if (_activeRebind != null)
+            {
+                _activeRebind.Cancel();
+            }
+
+            if (_rebindCoroutine != null)
+            {
+                StopCoroutine(_rebindCoroutine);
+                _rebindCoroutine = null;
+            }
+
             CloseDeveloperRules();
 
             if (_panel != null)
@@ -718,18 +731,19 @@ namespace AdaptiveBossArena.UI
         // --- Control rebinding. ---
 
         /// <summary>
-        /// Starts listening for a new key to bind to a control row.
+        /// Starts listening for a new key or mouse button to bind to a control row.
         /// </summary>
         /// <remarks>
         /// The action is disabled for the duration so the press being captured does not also fire the
-        /// control it is rebinding. Escape cancels, and the mouse is excluded so moving it cannot be
-        /// mistaken for the new binding. On completion the override is serialised straight into the
+        /// control it is rebinding. Escape cancels, and mouse motion/pointer positions are excluded so
+        /// moving the mouse cannot be mistaken for a new binding, while left, right and middle mouse
+        /// buttons are fully supported. On completion the override is serialised straight into the
         /// settings, so it survives the session exactly as the sliders do.
         /// </remarks>
         /// <param name="row">The row whose control is being rebound.</param>
         public void BeginRebind(RebindButton row)
         {
-            if (row == null || _gameplayMap == null || _activeRebind != null)
+            if (row == null || _gameplayMap == null || _activeRebind != null || _rebindCoroutine != null)
             {
                 return;
             }
@@ -741,13 +755,31 @@ namespace AdaptiveBossArena.UI
                 return;
             }
 
-            row.SetLabel("Press a key…");
+            _rebindCoroutine = StartCoroutine(RebindRoutine(row, action));
+        }
+
+        private System.Collections.IEnumerator RebindRoutine(RebindButton row, InputAction action)
+        {
+            row.SetLabel("Press key or click…");
+
+            // Wait a frame and ensure any mouse button from the UI button click has been released
+            yield return null;
+            while (Mouse.current != null && (Mouse.current.leftButton.isPressed || Mouse.current.rightButton.isPressed || Mouse.current.middleButton.isPressed))
+            {
+                yield return null;
+            }
 
             bool wasEnabled = action.enabled;
             action.Disable();
 
             _activeRebind = action.PerformInteractiveRebinding(row.BindingIndex)
-                .WithControlsExcluding("<Mouse>")
+                .WithControlsExcluding("<Mouse>/position")
+                .WithControlsExcluding("<Mouse>/delta")
+                .WithControlsExcluding("<Mouse>/scroll")
+                .WithControlsExcluding("<Pointer>/position")
+                .WithControlsExcluding("<Pointer>/delta")
+                .WithControlsExcluding("<Pointer>/scroll")
+                .WithExpectedControlType("Button")
                 .WithCancelingThrough("<Keyboard>/escape")
                 .OnComplete(op => CompleteRebind(op, action, row, wasEnabled, save: true))
                 .OnCancel(op => CompleteRebind(op, action, row, wasEnabled, save: false))
@@ -778,6 +810,7 @@ namespace AdaptiveBossArena.UI
         {
             operation.Dispose();
             _activeRebind = null;
+            _rebindCoroutine = null;
 
             if (wasEnabled)
             {
@@ -820,9 +853,34 @@ namespace AdaptiveBossArena.UI
                 return;
             }
 
-            row.SetLabel(InputControlPath.ToHumanReadableString(
+            string text = InputControlPath.ToHumanReadableString(
                 action.bindings[row.BindingIndex].effectivePath,
-                InputControlPath.HumanReadableStringOptions.OmitDevice));
+                InputControlPath.HumanReadableStringOptions.OmitDevice);
+
+            if (string.Equals(text, "leftButton", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "Left Button", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "LMB", System.StringComparison.OrdinalIgnoreCase))
+            {
+                text = "Left Click";
+            }
+            else if (string.Equals(text, "rightButton", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(text, "Right Button", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(text, "RMB", System.StringComparison.OrdinalIgnoreCase))
+            {
+                text = "Right Click";
+            }
+            else if (string.Equals(text, "middleButton", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(text, "Middle Button", System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(text, "MMB", System.StringComparison.OrdinalIgnoreCase))
+            {
+                text = "Middle Click";
+            }
+            else if (string.IsNullOrEmpty(text))
+            {
+                text = "—";
+            }
+
+            row.SetLabel(text);
         }
 
         /// <summary>Assigns the references. Used by the interface generator.</summary>

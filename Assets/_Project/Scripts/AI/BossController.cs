@@ -1290,7 +1290,8 @@ namespace AdaptiveBossArena.AI
 
             if (_aiMode == BossAIMode.MachineLearning && _mlBrain != null)
             {
-                string info = $"<b><color=#00FFAA>[LIVE ML UTILITY AGENT]</color></b> (CSE3705 & CSE2032)\n" +
+                string configStatus = _mlBrain.ConfigLoadedFromFile ? "<color=#88FF88>[Priors: StreamingAssets (3,444 frames)]</color>" : "<color=#FFAA55>[Priors: Default Hardcoded]</color>";
+                string info = $"<b><color=#00FFAA>[LIVE ML UTILITY AGENT]</color></b> {configStatus}\n" +
                               $"<b>Player Habit:</b> {_mlBrain.InferredPlayerArchetype}\n" +
                               $"<b>Cadence:</b> Deflect: {_mlBrain.LivePlayerDeflectRate:F2}/s | Dodge: {_mlBrain.LivePlayerDodgeRate:F2}/s | Atk: {_mlBrain.LivePlayerAttackRate:F2}/s\n" +
                               $"<b>Online Adaptations:</b> <color=#FFD700>{_mlBrain.TotalOnlineAdaptationUpdates} live updates</color>\n" +
@@ -1298,8 +1299,8 @@ namespace AdaptiveBossArena.AI
                               $"<b>Optimal Utility:</b> {_mlBrain.LastChosenUtility:F1} | Latency: {_mlBrain.LastExecutionTimeMicroseconds:F2} µs\n" +
                               $"<b>Action Q-Values:</b> Sweep: {_mlBrain.CurrentUtilities[ActionArchetype.MeleeStrike]:F1} | Shockwave: {_mlBrain.CurrentUtilities[ActionArchetype.RangedThreat]:F1} | Slam: {_mlBrain.CurrentUtilities[ActionArchetype.HeavyCrush]:F1} | Lunge: {_mlBrain.CurrentUtilities[ActionArchetype.GapCloser]:F1}";
 
-                GUI.Box(new Rect(10, 10, 480, 130), info, boxStyle);
-                if (GUI.Button(new Rect(10, 145, 230, 26), "Switch to Rule-Based (Baseline)"))
+                GUI.Box(new Rect(10, 10, 490, 135), info, boxStyle);
+                if (GUI.Button(new Rect(10, 150, 230, 26), "Switch to Rule-Based (Baseline)"))
                 {
                     _aiMode = BossAIMode.RuleBased;
                     Debug.Log("<color=#FFAA00>[AI SWITCH]</color> Switched Boss to Rule-Based Expert System.");

@@ -73,10 +73,11 @@ namespace AdaptiveBossArena.Editor
 
             var menu = root.gameObject.AddComponent<SettingsMenu>();
 
+            RebindRow(panel.transform, "Light Attack", "LightAttack", menu, 160f, 400f, ref rightY);
+            RebindRow(panel.transform, "Guard / Deflect", "Guard", menu, 160f, 400f, ref rightY);
+            RebindRow(panel.transform, "Parry Strike", "Parry", menu, 160f, 400f, ref rightY);
             RebindRow(panel.transform, "Dash / Dodge", "Dash", menu, 160f, 400f, ref rightY);
             RebindRow(panel.transform, "Jump", "Jump", menu, 160f, 400f, ref rightY);
-            RebindRow(panel.transform, "Parry Strike", "Parry", menu, 160f, 400f, ref rightY);
-            RebindRow(panel.transform, "Guard / Deflect", "Guard", menu, 160f, 400f, ref rightY);
             RebindRow(panel.transform, "Special Ability", "Special", menu, 160f, 400f, ref rightY);
             RebindRow(panel.transform, "Heal Flask", "Heal", menu, 160f, 400f, ref rightY);
             RebindRow(panel.transform, "Lock On Target", "LockOn", menu, 160f, 400f, ref rightY);

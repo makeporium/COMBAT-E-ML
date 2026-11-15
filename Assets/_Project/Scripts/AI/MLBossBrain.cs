@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using AdaptiveBossArena.Combat;
 using AdaptiveBossArena.Core.Combat;
 using AdaptiveBossArena.Core.Perception;
@@ -29,10 +30,125 @@ namespace AdaptiveBossArena.AI
     ///    U(s, a) = Q_hat(s, a) * Damage(a) - lambda * P_parry(s, a) * PostureLoss(a) - StaminaCost(a)
     /// 4. Online Habit Adaptation & Bayesian Belief Updating (Reinforcement loop from live outcomes)
     /// 5. 2-Step Combo Lookahead (A* Heuristic Planning)
+    ///
+    /// Priors are loaded at startup from StreamingAssets/utility_agent_config.json
+    /// (trained from 3,444 frames of real playtester telemetry).
     /// </summary>
     public sealed class MLBossBrain
     {
         private readonly Stopwatch _timer = new Stopwatch();
+
+        // =====================================================================
+        // CONFIG LOADER — Reads Python-trained priors from StreamingAssets JSON
+        // =====================================================================
+
+        /// <summary>
+        /// Minimal JSON config structure. Unity has no built-in JSON deserializer for
+        /// nested dicts, so we parse the keys we need manually via JsonUtility with
+        /// a flat wrapper. We fall back to hardcoded defaults if the file is missing.
+        /// </summary>
+        [Serializable]
+        private class BrainConfig
+        {
+            public float lambda_risk_penalty   = 1.25f;
+            public float online_learning_rate  = 0.25f;
+            public float softmax_temperature   = 3.5f;
+            public float ranged_min_cooldown   = 5.0f;
+            public float heavy_crush_min_cooldown = 3.5f;
+            public float repetition_penalty_per_repeat = 16.0f;
+
+            // Per-archetype arrays in archetype order: [Melee, Ranged, Gap, Heavy]
+            public float[] hit_prior_values    = { 0.2342f, 0.5199f, 0.1058f, 0.4218f };
+            public float[] parry_prior_values  = { 0.2601f, 0.0159f, 0.0511f, 0.1034f };
+            public float[] base_damage_values  = { 25f,     18f,     15f,     45f      };
+            public float[] stamina_cost_values = { 10f,     8f,      12f,     25f      };
+            public float[] posture_pen_values  = { 40f,     0f,      20f,     15f      };
+        }
+
+        private static BrainConfig LoadConfig()
+        {
+            string configPath = Path.Combine(Application.streamingAssetsPath, "utility_agent_config.json");
+            BrainConfig cfg = new BrainConfig(); // Defaults (safe fallback)
+
+            try
+            {
+                if (File.Exists(configPath))
+                {
+                    string raw = File.ReadAllText(configPath);
+
+                    // Parse scalar floats via simple string search (no extra libs needed)
+                    cfg.lambda_risk_penalty            = ParseJsonFloat(raw, "lambda_risk_penalty",            cfg.lambda_risk_penalty);
+                    cfg.online_learning_rate           = ParseJsonFloat(raw, "online_learning_rate",           cfg.online_learning_rate);
+                    cfg.softmax_temperature            = ParseJsonFloat(raw, "softmax_temperature",            cfg.softmax_temperature);
+                    cfg.ranged_min_cooldown            = ParseJsonFloat(raw, "ranged_min_cooldown",            cfg.ranged_min_cooldown);
+                    cfg.heavy_crush_min_cooldown       = ParseJsonFloat(raw, "heavy_crush_min_cooldown",       cfg.heavy_crush_min_cooldown);
+                    cfg.repetition_penalty_per_repeat  = ParseJsonFloat(raw, "repetition_penalty_per_repeat",  cfg.repetition_penalty_per_repeat);
+
+                    // Parse per-archetype prior dicts — order: Melee, Ranged, Gap, Heavy
+                    string[] archetypes = { "MeleeStrike", "RangedThreat", "GapCloser", "HeavyCrush" };
+
+                    for (int i = 0; i < archetypes.Length; i++)
+                    {
+                        cfg.hit_prior_values[i]    = ParseJsonDictFloat(raw, "hit_priors",    archetypes[i], cfg.hit_prior_values[i]);
+                        cfg.parry_prior_values[i]  = ParseJsonDictFloat(raw, "parry_priors",  archetypes[i], cfg.parry_prior_values[i]);
+                        cfg.base_damage_values[i]  = ParseJsonDictFloat(raw, "base_damages",  archetypes[i], cfg.base_damage_values[i]);
+                        cfg.stamina_cost_values[i] = ParseJsonDictFloat(raw, "stamina_costs", archetypes[i], cfg.stamina_cost_values[i]);
+                        cfg.posture_pen_values[i]  = ParseJsonDictFloat(raw, "posture_penalties", archetypes[i], cfg.posture_pen_values[i]);
+                    }
+
+                    UnityEngine.Debug.Log("<color=#00FF88>[ML BRAIN CONFIG]</color> Loaded Python-trained priors from StreamingAssets/utility_agent_config.json — " +
+                                          $"Hit priors: Melee={cfg.hit_prior_values[0]:P0}, Ranged={cfg.hit_prior_values[1]:P0}, Gap={cfg.hit_prior_values[2]:P0}, Heavy={cfg.hit_prior_values[3]:P0}");
+                }
+                else
+                {
+                    UnityEngine.Debug.LogWarning("[ML BRAIN CONFIG] utility_agent_config.json not found in StreamingAssets — using hardcoded defaults.");
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[ML BRAIN CONFIG] Failed to parse config: {ex.Message} — using defaults.");
+            }
+
+            return cfg;
+        }
+
+        /// Parses a top-level float from raw JSON text, e.g. "lambda_risk_penalty": 1.25
+        private static float ParseJsonFloat(string json, string key, float fallback)
+        {
+            string search = $"\"{key}\"";
+            int idx = json.IndexOf(search, StringComparison.Ordinal);
+            if (idx < 0) return fallback;
+
+            int colon = json.IndexOf(':', idx + search.Length);
+            if (colon < 0) return fallback;
+
+            int start = colon + 1;
+            while (start < json.Length && (json[start] == ' ' || json[start] == '\t' || json[start] == '\r' || json[start] == '\n'))
+                start++;
+
+            int end = start;
+            while (end < json.Length && json[end] != ',' && json[end] != '}' && json[end] != '\r' && json[end] != '\n')
+                end++;
+
+            string token = json.Substring(start, end - start).Trim();
+            return float.TryParse(token, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out float val) ? val : fallback;
+        }
+
+        /// Parses a value from a named nested object: "dictKey": { "fieldKey": value }
+        private static float ParseJsonDictFloat(string json, string dictKey, string fieldKey, float fallback)
+        {
+            string dictSearch = $"\"{dictKey}\"";
+            int dictIdx = json.IndexOf(dictSearch, StringComparison.Ordinal);
+            if (dictIdx < 0) return fallback;
+
+            int braceOpen = json.IndexOf('{', dictIdx);
+            int braceClose = json.IndexOf('}', braceOpen);
+            if (braceOpen < 0 || braceClose < 0) return fallback;
+
+            string subJson = json.Substring(braceOpen, braceClose - braceOpen + 1);
+            return ParseJsonFloat(subJson, fieldKey, fallback);
+        }
 
         // ---------------------------------------------------------------------
         // LIVE DIAGNOSTICS & TELEMETRY
@@ -44,6 +160,7 @@ namespace AdaptiveBossArena.AI
         public string LastDecisionExplanation { get; private set; } = "Initializing...";
         public string InferredPlayerArchetype { get; private set; } = "Calibrating (Ayush Baseline)";
         public int TotalOnlineAdaptationUpdates { get; private set; }
+        public bool ConfigLoadedFromFile { get; private set; }
 
         // Live action utility cache for UI inspection
         public readonly Dictionary<ActionArchetype, float> CurrentUtilities = new Dictionary<ActionArchetype, float>
@@ -54,31 +171,66 @@ namespace AdaptiveBossArena.AI
             { ActionArchetype.HeavyCrush, 0f }
         };
 
-        public readonly Dictionary<ActionArchetype, float> CurrentParryBeliefs = new Dictionary<ActionArchetype, float>
-        {
-            { ActionArchetype.MeleeStrike, 0.25f },
-            { ActionArchetype.RangedThreat, 0.00f },
-            { ActionArchetype.GapCloser, 0.15f },
-            { ActionArchetype.HeavyCrush, 0.05f }
-        };
-
-        public readonly Dictionary<ActionArchetype, float> CurrentHitBeliefs = new Dictionary<ActionArchetype, float>
-        {
-            { ActionArchetype.MeleeStrike, 0.45f },
-            { ActionArchetype.RangedThreat, 0.55f },
-            { ActionArchetype.GapCloser, 0.40f },
-            { ActionArchetype.HeavyCrush, 0.50f }
-        };
+        // Bayesian Belief Vectors — Loaded from Python-trained priors in utility_agent_config.json
+        public readonly Dictionary<ActionArchetype, float> CurrentParryBeliefs;
+        public readonly Dictionary<ActionArchetype, float> CurrentHitBeliefs;
 
         // ---------------------------------------------------------------------
-        // COMBAT REWARD & UTILITY PARAMETERS (Trained from Python Track B)
+        // COMBAT REWARD & UTILITY PARAMETERS (Loaded from Python Track B)
         // ---------------------------------------------------------------------
-        private const float RiskAversionWeight = 1.25f; // Lambda penalizing parry vulnerability
-        private const float OnlineLearningRate = 0.25f;  // Alpha for online exponential belief updates
+        private readonly float _riskAversionWeight;  // Lambda penalizing parry vulnerability
+        private readonly float _onlineLearningRate;  // Alpha for online exponential belief updates
+        private readonly float _softmaxTemperature;
+        private readonly float _rangedMinCooldown;
+        private readonly float _heavyCrushMinCooldown;
+        private readonly float _repetitionPenaltyPerRepeat;
 
-        private static readonly float[] BaseDamage = { 25f, 18f, 15f, 45f };
-        private static readonly float[] PosturePenalty = { 40f, 0f, 20f, 15f }; // Ranged shockwave is 0 (unparryable)
-        private static readonly float[] StaminaCost = { 10f, 8f, 12f, 25f };
+        private readonly float[] _baseDamage    = new float[4];
+        private readonly float[] _posturePenalty = new float[4];
+        private readonly float[] _staminaCost    = new float[4];
+
+        // ---------------------------------------------------------------------
+        // CONSTRUCTOR — Loads Python-trained config from StreamingAssets
+        // ---------------------------------------------------------------------
+        public MLBossBrain()
+        {
+            BrainConfig cfg = LoadConfig();
+            ConfigLoadedFromFile = File.Exists(
+                Path.Combine(Application.streamingAssetsPath, "utility_agent_config.json"));
+
+            // Load scalar hyper-parameters
+            _riskAversionWeight         = cfg.lambda_risk_penalty;
+            _onlineLearningRate         = cfg.online_learning_rate;
+            _softmaxTemperature         = cfg.softmax_temperature;
+            _rangedMinCooldown          = cfg.ranged_min_cooldown;
+            _heavyCrushMinCooldown      = cfg.heavy_crush_min_cooldown;
+            _repetitionPenaltyPerRepeat = cfg.repetition_penalty_per_repeat;
+
+            // Load per-archetype arrays
+            for (int i = 0; i < 4; i++)
+            {
+                _baseDamage[i]     = cfg.base_damage_values[i];
+                _posturePenalty[i] = cfg.posture_pen_values[i];
+                _staminaCost[i]    = cfg.stamina_cost_values[i];
+            }
+
+            // Load Python-trained belief priors
+            CurrentHitBeliefs = new Dictionary<ActionArchetype, float>
+            {
+                { ActionArchetype.MeleeStrike,  cfg.hit_prior_values[0] },
+                { ActionArchetype.RangedThreat, cfg.hit_prior_values[1] },
+                { ActionArchetype.GapCloser,    cfg.hit_prior_values[2] },
+                { ActionArchetype.HeavyCrush,   cfg.hit_prior_values[3] }
+            };
+
+            CurrentParryBeliefs = new Dictionary<ActionArchetype, float>
+            {
+                { ActionArchetype.MeleeStrike,  cfg.parry_prior_values[0] },
+                { ActionArchetype.RangedThreat, cfg.parry_prior_values[1] },
+                { ActionArchetype.GapCloser,    cfg.parry_prior_values[2] },
+                { ActionArchetype.HeavyCrush,   cfg.parry_prior_values[3] }
+            };
+        }
 
         // ---------------------------------------------------------------------
         // REAL-TIME ROLLING PLAYER HABIT TRACKER (5.0s window)
@@ -93,6 +245,11 @@ namespace AdaptiveBossArena.AI
         public float LivePlayerDeflectRate { get; private set; }
 
         private AttackDefinition _lastExecutedAttack;
+
+        // Anti-Spam, Fatigue & Pacing Limits (Prevents degenerate projectile spamming)
+        private ActionArchetype _lastExecutedArchetype = ActionArchetype.MeleeStrike;
+        private int _consecutiveArchetypeCount = 0;
+        private readonly float[] _lastArchetypeTime = { -999f, -999f, -999f, -999f };
 
         /// <summary>
         /// Selects the optimal attack maximizing Expected Utility U(s, a) against current player habits.
@@ -120,10 +277,10 @@ namespace AdaptiveBossArena.AI
             float bossHpNorm = context.Health != null ? context.Health.Normalized : 1f;
 
             // Score each candidate attack using the learned Value and Utility Function
-            AttackDefinition bestAttack = null;
-            float bestUtility = -float.MaxValue;
-            ActionArchetype bestArchetype = ActionArchetype.MeleeStrike;
-            string bestExplanation = "";
+            List<AttackDefinition> candidates = new List<AttackDefinition>();
+            List<ActionArchetype> archetypes = new List<ActionArchetype>();
+            List<float> utilities = new List<float>();
+            List<string> explanations = new List<string>();
 
             for (int i = 0; i < catalogue.Length; i++)
             {
@@ -181,38 +338,108 @@ namespace AdaptiveBossArena.AI
                 }
 
                 // 4. Expected Utility Formulation
-                float immediateUtility = (qHit * BaseDamage[k]) - (RiskAversionWeight * pParry * PosturePenalty[k]) - StaminaCost[k];
+                float immediateUtility = (qHit * _baseDamage[k]) - (_riskAversionWeight * pParry * _posturePenalty[k]) - _staminaCost[k];
 
                 // 5. 2-Step Lookahead Combo Planning (A* Search heuristic)
                 float lookaheadBonus = 0f;
                 if (archetype == ActionArchetype.GapCloser && distance > 3.5f)
                 {
-                    // After closing distance, follow-up Ground Slam or Melee is enabled
                     float predictedDist = Mathf.Max(1.5f, distance - 3.5f);
-                    float predictedFollowupUtility = (CurrentHitBeliefs[ActionArchetype.HeavyCrush] * BaseDamage[(int)ActionArchetype.HeavyCrush]) - StaminaCost[(int)ActionArchetype.HeavyCrush];
+                    float predictedFollowupUtility = (CurrentHitBeliefs[ActionArchetype.HeavyCrush] * _baseDamage[(int)ActionArchetype.HeavyCrush]) - _staminaCost[(int)ActionArchetype.HeavyCrush];
                     lookaheadBonus = 0.85f * Mathf.Max(0f, predictedFollowupUtility * 0.35f);
                 }
 
-                float totalUtility = immediateUtility + lookaheadBonus;
+                // 6. Anti-Spam Cadence Penalties & Closing Aggression
+                float timeSinceLast = currentTime - _lastArchetypeTime[k];
+                float cooldownPenalty = 0f;
+                if (archetype == ActionArchetype.RangedThreat && timeSinceLast < _rangedMinCooldown)
+                {
+                    // Strict cooldown on projectile waves — loaded from config
+                    cooldownPenalty = (_rangedMinCooldown - timeSinceLast) * 12.0f + 30.0f;
+                }
+                else if (archetype == ActionArchetype.HeavyCrush && timeSinceLast < _heavyCrushMinCooldown)
+                {
+                    cooldownPenalty = (_heavyCrushMinCooldown - timeSinceLast) * 8.0f + 15.0f;
+                }
+
+                // Consecutive repetition penalty (Law of Diminishing Marginal Utility)
+                float repeatPenalty = 0f;
+                if (archetype == _lastExecutedArchetype)
+                {
+                    repeatPenalty = _repetitionPenaltyPerRepeat * _consecutiveArchetypeCount;
+                }
+
+                // Active Closing Drive: When far away, boss aggressively dashes forward with sword rather than camping
+                float engageBonus = (distance > 3.8f && archetype == ActionArchetype.GapCloser) ? 14.0f : 0f;
+
+                float totalUtility = immediateUtility + lookaheadBonus + engageBonus - cooldownPenalty - repeatPenalty;
                 CurrentUtilities[archetype] = totalUtility;
 
-                if (totalUtility > bestUtility)
-                {
-                    bestUtility = totalUtility;
-                    bestAttack = candidate;
-                    bestArchetype = archetype;
-                    bestExplanation = $"Utility={totalUtility:F1} (Q_Hit={qHit:P0}, P_Parry={pParry:P0}, Dist={distance:F1}m)";
-                }
+                candidates.Add(candidate);
+                archetypes.Add(archetype);
+                utilities.Add(totalUtility);
+                explanations.Add($"Utility={totalUtility:F1} (Q_Hit={qHit:P0}, P_Parry={pParry:P0}, Dist={distance:F1}m, Repeat={repeatPenalty:F0}, Cd={cooldownPenalty:F0})");
             }
 
-            // Fallback safety
-            if (bestAttack == null)
+            // Boltzmann / Softmax Exploration over candidate utilities to ensure variety and eliminate spam
+            AttackDefinition bestAttack;
+            ActionArchetype bestArchetype;
+            float bestUtility;
+            string bestExplanation;
+
+            if (candidates.Count > 0)
+            {
+                float maxU = float.MinValue;
+                for (int i = 0; i < utilities.Count; i++)
+                {
+                    if (utilities[i] > maxU) maxU = utilities[i];
+                }
+
+                float sumExp = 0f;
+                float[] expScores = new float[utilities.Count];
+                for (int i = 0; i < utilities.Count; i++)
+                {
+                    expScores[i] = Mathf.Exp((utilities[i] - maxU) / _softmaxTemperature);
+                    sumExp += expScores[i];
+                }
+
+                float roll = (context.Random != null ? context.Random.NextFloat01() : UnityEngine.Random.value) * sumExp;
+                float accum = 0f;
+                int selectedIndex = 0;
+                for (int i = 0; i < expScores.Length; i++)
+                {
+                    accum += expScores[i];
+                    if (roll <= accum)
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+
+                bestAttack = candidates[selectedIndex];
+                bestArchetype = archetypes[selectedIndex];
+                bestUtility = utilities[selectedIndex];
+                bestExplanation = explanations[selectedIndex];
+            }
+            else
             {
                 bestAttack = catalogue[0];
                 bestArchetype = ClassifyArchetype(bestAttack);
                 bestUtility = 0f;
                 bestExplanation = "Fallback (Catalogue Default)";
             }
+
+            // Update repetition and cadence trackers
+            if (bestArchetype == _lastExecutedArchetype)
+            {
+                _consecutiveArchetypeCount++;
+            }
+            else
+            {
+                _consecutiveArchetypeCount = 1;
+                _lastExecutedArchetype = bestArchetype;
+            }
+            _lastArchetypeTime[(int)bestArchetype] = currentTime;
 
             _timer.Stop();
             LastExecutionTimeMicroseconds = _timer.Elapsed.TotalMilliseconds * 1000.0;
@@ -280,10 +507,10 @@ namespace AdaptiveBossArena.AI
 
             // Online Bayesian / EMA belief update
             float oldParry = CurrentParryBeliefs[archetype];
-            CurrentParryBeliefs[archetype] = Mathf.Clamp01(oldParry * (1f - OnlineLearningRate) + (OnlineLearningRate * 1.0f));
+            CurrentParryBeliefs[archetype] = Mathf.Clamp01(oldParry * (1f - _onlineLearningRate) + (_onlineLearningRate * 1.0f));
 
             float oldHit = CurrentHitBeliefs[archetype];
-            CurrentHitBeliefs[archetype] = Mathf.Clamp01(oldHit * (1f - OnlineLearningRate) + (OnlineLearningRate * 0.0f));
+            CurrentHitBeliefs[archetype] = Mathf.Clamp01(oldHit * (1f - _onlineLearningRate) + (_onlineLearningRate * 0.0f));
 
             TotalOnlineAdaptationUpdates++;
 
@@ -323,8 +550,8 @@ namespace AdaptiveBossArena.AI
                     {
                         ActionArchetype archetype = ClassifyArchetype(_lastExecutedAttack);
                         // Attack successfully connected: reinforce hit belief and reward archetype
-                        CurrentHitBeliefs[archetype] = Mathf.Clamp01(CurrentHitBeliefs[archetype] * (1f - OnlineLearningRate) + (OnlineLearningRate * 1.0f));
-                        CurrentParryBeliefs[archetype] = Mathf.Clamp01(CurrentParryBeliefs[archetype] * (1f - OnlineLearningRate) + (OnlineLearningRate * 0.0f));
+                        CurrentHitBeliefs[archetype] = Mathf.Clamp01(CurrentHitBeliefs[archetype] * (1f - _onlineLearningRate) + (_onlineLearningRate * 1.0f));
+                        CurrentParryBeliefs[archetype] = Mathf.Clamp01(CurrentParryBeliefs[archetype] * (1f - _onlineLearningRate) + (_onlineLearningRate * 0.0f));
                         TotalOnlineAdaptationUpdates++;
                     }
                 }
@@ -334,7 +561,7 @@ namespace AdaptiveBossArena.AI
                     {
                         ActionArchetype archetype = ClassifyArchetype(_lastExecutedAttack);
                         // Attack whiffed: reduce hit belief slightly
-                        CurrentHitBeliefs[archetype] = Mathf.Clamp01(CurrentHitBeliefs[archetype] * (1f - (OnlineLearningRate * 0.5f)));
+                        CurrentHitBeliefs[archetype] = Mathf.Clamp01(CurrentHitBeliefs[archetype] * (1f - (_onlineLearningRate * 0.5f)));
                         TotalOnlineAdaptationUpdates++;
                     }
                 }
@@ -374,15 +601,15 @@ namespace AdaptiveBossArena.AI
                     return Mathf.Exp(-0.75f * (distance - 2.8f));
 
                 case ActionArchetype.RangedThreat:
-                    // Highly effective across mid-to-long ranges (2.0m to 8.0m)
-                    if (distance >= 2.0f && distance <= 7.5f) return 1.0f;
-                    if (distance < 2.0f) return 0.70f;
-                    return 0.60f;
+                    // Only for long range (>4.2m). Heavily penalized in melee/mid range so boss does NOT projectile-camp
+                    if (distance >= 4.2f) return 1.0f;
+                    if (distance >= 3.2f) return 0.30f;
+                    return 0.10f; // Strongly discouraged at point-blank (<3.2m)
 
                 case ActionArchetype.GapCloser:
-                    // Strongly favored at long range (>3.5m), penalized at point-blank range (<2.0m)
-                    if (distance > 3.5f) return 1.15f;
-                    if (distance <= 2.0f) return 0.25f;
+                    // Strongly favored at long range (>3.5m) to aggressively close distance!
+                    if (distance > 3.5f) return 1.35f;
+                    if (distance <= 2.0f) return 0.15f;
                     return 0.65f;
 
                 case ActionArchetype.HeavyCrush:
