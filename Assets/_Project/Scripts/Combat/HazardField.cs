@@ -37,6 +37,7 @@ namespace AdaptiveBossArena.Combat
 
         private HazardZone[] _zones;
         private int _next;
+        private Material _runtimeFallbackMaterial;
 
         /// <summary>The material the hazard discs are drawn with.</summary>
         public Material DiscMaterial => _discMaterial;
@@ -57,7 +58,7 @@ namespace AdaptiveBossArena.Combat
                     "[Adaptive Boss Arena] Hazard discs have no material and built one at runtime. Its " +
                     "shader may be stripped from a build; re-run the scene setup.");
 
-                material = CreateDiscMaterial();
+                material = _runtimeFallbackMaterial = CreateDiscMaterial();
             }
 
             _zones = new HazardZone[_capacity];
@@ -86,6 +87,17 @@ namespace AdaptiveBossArena.Combat
 
             _zones[_next].Activate(center, radius, damagePerTick, durationSeconds);
             _next = (_next + 1) % _zones.Length;
+        }
+
+        private void OnDestroy()
+        {
+            // Runtime fallback materials are GPU resources and must be explicitly released when
+            // the generated arena is rebuilt or unloaded.
+            if (_runtimeFallbackMaterial != null)
+            {
+                Destroy(_runtimeFallbackMaterial);
+                _runtimeFallbackMaterial = null;
+            }
         }
 
         /// <summary>Builds the one transparent material every disc shares.</summary>

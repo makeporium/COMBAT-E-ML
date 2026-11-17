@@ -97,6 +97,7 @@ namespace AdaptiveBossArena.Editor
             BuildPlayerBars(root, references, channels);
             BuildWeaponDisplay(root, channels);
             BuildBossBar(root, references, channels);
+            BuildLiveCombatUi(root);
             BuildAdaptationTell(root, references, channels);
             BuildRipostePrompt(root, references);
 
@@ -247,6 +248,68 @@ namespace AdaptiveBossArena.Editor
 
             var indicator = pipsRoot.AddComponent<BossPhaseIndicator>();
             indicator.Bind(channels.BossPhase, pips);
+        }
+
+        /// <summary>
+        /// Builds the right-hand combat ledger and the small centre callout that tells the player
+        /// exactly which defensive response just occurred.
+        /// </summary>
+        private static void BuildLiveCombatUi(Transform root)
+        {
+            GameObject panel = CreatePanel(root, "CombatReadout",
+                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-32f, -20f), new Vector2(390f, 260f), new Color(0.025f, 0.02f, 0.03f, 0.84f));
+
+            Text title = CreateText(panel.transform, "Title", "COMBAT LEDGER", 19, TextAnchor.UpperLeft);
+            title.rectTransform.anchoredPosition = new Vector2(20f, -18f);
+            title.rectTransform.sizeDelta = new Vector2(350f, 30f);
+            title.color = new Color(0.88f, 0.72f, 0.48f);
+            title.fontStyle = FontStyle.Bold;
+
+            Text playerCaption = CreateText(panel.transform, "PlayerCaption", "YOU • LAST ACTION", 14, TextAnchor.UpperLeft);
+            playerCaption.rectTransform.anchoredPosition = new Vector2(20f, -62f);
+            playerCaption.rectTransform.sizeDelta = new Vector2(350f, 24f);
+            playerCaption.color = new Color(0.52f, 0.62f, 0.75f);
+
+            Text playerAction = CreateText(panel.transform, "PlayerAction", "WAITING", 19, TextAnchor.UpperLeft);
+            playerAction.rectTransform.anchoredPosition = new Vector2(20f, -86f);
+            playerAction.rectTransform.sizeDelta = new Vector2(350f, 30f);
+            playerAction.fontStyle = FontStyle.Bold;
+
+            Text bossCaption = CreateText(panel.transform, "BossCaption", "ML BOSS • LAST ACTION", 14, TextAnchor.UpperLeft);
+            bossCaption.rectTransform.anchoredPosition = new Vector2(20f, -124f);
+            bossCaption.rectTransform.sizeDelta = new Vector2(350f, 24f);
+            bossCaption.color = new Color(0.7f, 0.47f, 0.35f);
+
+            Text bossAction = CreateText(panel.transform, "BossAction", "WAITING", 17, TextAnchor.UpperLeft);
+            bossAction.rectTransform.anchoredPosition = new Vector2(20f, -148f);
+            bossAction.rectTransform.sizeDelta = new Vector2(350f, 34f);
+            bossAction.fontStyle = FontStyle.Bold;
+
+            Text mlStatus = CreateText(panel.transform, "MlStatus", "CALIBRATING", 13, TextAnchor.UpperLeft);
+            mlStatus.rectTransform.anchoredPosition = new Vector2(20f, -192f);
+            mlStatus.rectTransform.sizeDelta = new Vector2(350f, 58f);
+            mlStatus.color = new Color(0.72f, 0.78f, 0.7f);
+
+            var readout = panel.AddComponent<CombatReadout>();
+            readout.Bind(playerAction, bossAction, mlStatus);
+
+            GameObject feedbackRoot = new GameObject("CombatFeedback", typeof(RectTransform));
+            feedbackRoot.transform.SetParent(root, false);
+            RectTransform feedbackRect = feedbackRoot.GetComponent<RectTransform>();
+            feedbackRect.anchorMin = new Vector2(0.5f, 0.5f);
+            feedbackRect.anchorMax = new Vector2(0.5f, 0.5f);
+            feedbackRect.pivot = new Vector2(0.5f, 0.5f);
+            feedbackRect.anchoredPosition = new Vector2(0f, -140f);
+            feedbackRect.sizeDelta = new Vector2(480f, 48f);
+            CanvasGroup group = feedbackRoot.AddComponent<CanvasGroup>();
+            group.blocksRaycasts = false;
+            Text feedback = CreateText(feedbackRoot.transform, "Label", string.Empty, 30, TextAnchor.MiddleCenter);
+            feedback.rectTransform.anchoredPosition = Vector2.zero;
+            feedback.rectTransform.sizeDelta = new Vector2(480f, 48f);
+            feedback.fontStyle = FontStyle.Bold;
+            feedback.gameObject.AddComponent<Shadow>().effectColor = new Color(0f, 0f, 0f, 0.95f);
+            feedbackRoot.AddComponent<CombatFeedbackDisplay>().Bind(feedback, group);
         }
 
         /// <summary>

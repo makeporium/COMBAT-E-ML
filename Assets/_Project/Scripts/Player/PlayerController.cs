@@ -252,6 +252,14 @@ namespace AdaptiveBossArena.Player
         /// <summary>True while the guard is up. For debug tooling.</summary>
         public bool IsGuarding => _context != null && _context.IsGuarding;
 
+        /// <summary>Whether the most recent successful defence was the committed parry strike.</summary>
+        /// <remarks>
+        /// The parry deliberately shares the deflect effects channel for sparks, sound and posture
+        /// transfer. Exposing the semantic result keeps reports from incorrectly counting it as a
+        /// timed guard deflect.
+        /// </remarks>
+        public bool LastDefenceWasParry => _context != null && _context.LastDefenceWasParry;
+
         /// <summary>True when Training mode is holding the player above death. For debug tooling.</summary>
         public bool IsImmortal => _immortal;
 

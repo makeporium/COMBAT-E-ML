@@ -30,7 +30,10 @@ namespace AdaptiveBossArena.Game
     {
         public static TelemetryManager Instance { get; private set; }
 
-        private const string CsvFileName = "gameplay_telemetry.csv";
+        // Schema v2 separates normal/perfect dodges and deflects/parry strikes.  A new file avoids
+        // appending rows with a different column count to the legacy training export.
+        private const string CsvFileName = "gameplay_telemetry_v3.csv";
+        private readonly string _sessionId = Guid.NewGuid().ToString("N");
 
         [Header("Sampling Configuration")]
         [SerializeField]
@@ -54,6 +57,7 @@ namespace AdaptiveBossArena.Game
         private string _csvPath;
         private StreamWriter _writer;
         private int _currentGameId = 1;
+        private bool _hasStartedGame;
         private int _sampleCountThisGame = 0;
         private float _nextSampleTime = 0f;
         private float _matchStartTime = 0f;
@@ -61,13 +65,14 @@ namespace AdaptiveBossArena.Game
         private float _lastPlayerHp = 100f;
         private string _lastPlayerState = "";
         private string _lastBossState = "";
-        private AttackDefinition _lastObservedBossAttack;
         private bool _wasCombatActive = false;
 
         // Cumulative combat event counters for the current game
         private int _countPlayerAttacks;
         private int _countPlayerDodges;
+        private int _countPlayerPerfectDodges;
         private int _countPlayerDeflects;
+        private int _countPlayerParries;
         private int _countPlayerBlocks;
         private int _countPlayerHitsTaken;
         private int _countBossAttacks;
@@ -121,12 +126,15 @@ namespace AdaptiveBossArena.Game
             "tuning_unblockable_weight," +
             "count_player_attacks," +
             "count_player_dodges," +
+            "count_player_perfect_dodges," +
             "count_player_deflects," +
+            "count_player_parries," +
             "count_player_blocks," +
             "count_player_hits_taken," +
             "count_boss_attacks," +
             "count_boss_parries," +
-            "count_boss_hits_taken";
+            "count_boss_hits_taken," +
+            "schema_version,session_id,player_source,ai_mode,sample_kind";
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void AutoBootstrap()
@@ -145,7 +153,10 @@ namespace AdaptiveBossArena.Game
         {
             if (Instance != null && Instance != this)
             {
-                Destroy(gameObject);
+                // The scene's TelemetryManager shares the Managers object with the clock and
+                // EncounterDirector. Destroying its GameObject silently kills the entire fight
+                // when the persistent telemetry singleton came from the main menu.
+                Destroy(this);
                 return;
             }
 
@@ -158,7 +169,7 @@ namespace AdaptiveBossArena.Game
         private void Start()
         {
             FindReferences();
-            if (_player != null && _boss != null)
+            if (_player != null && _boss != null && !_wasCombatActive)
             {
                 StartNewGame();
             }
@@ -336,12 +347,16 @@ namespace AdaptiveBossArena.Game
                         _countPlayerAttacks++;
                         break;
                     case CombatEventKind.DodgePerformed:
-                    case CombatEventKind.PerfectDodge:
                         _countPlayerDodges++;
                         break;
+                    case CombatEventKind.PerfectDodge:
+                        _countPlayerPerfectDodges++;
+                        break;
                     case CombatEventKind.Deflected:
-                    case CombatEventKind.PlayerParried:
                         _countPlayerDeflects++;
+                        break;
+                    case CombatEventKind.PlayerParried:
+                        _countPlayerParries++;
                         break;
                     case CombatEventKind.Blocked:
                         _countPlayerBlocks++;
@@ -358,6 +373,10 @@ namespace AdaptiveBossArena.Game
                 {
                     case CombatEventKind.AttackStarted:
                         _countBossAttacks++;
+                        if (_logOnBossAttack && _player != null && _boss != null)
+                        {
+                            RecordSnapshot("Fighting", "attack_start");
+                        }
                         break;
                     case CombatEventKind.Parried:
                         _countBossParries++;
@@ -373,16 +392,22 @@ namespace AdaptiveBossArena.Game
         /// <summary>Starts a new match session, incrementing game_id and resetting counters.</summary>
         public void StartNewGame()
         {
+            if (_hasStartedGame)
+            {
+                _currentGameId++;
+            }
+            _hasStartedGame = true;
             _countPlayerAttacks = 0;
             _countPlayerDodges = 0;
+            _countPlayerPerfectDodges = 0;
             _countPlayerDeflects = 0;
+            _countPlayerParries = 0;
             _countPlayerBlocks = 0;
             _countPlayerHitsTaken = 0;
             _countBossAttacks = 0;
             _countBossParries = 0;
             _countBossHitsTaken = 0;
             _sampleCountThisGame = 0;
-            _lastObservedBossAttack = null;
             _nextSampleTime = 0f;
             _wasCombatActive = true;
             _matchStartTime = Time.time;
@@ -428,63 +453,19 @@ namespace AdaptiveBossArena.Game
             float currentTime = Mathf.Max(0f, Time.time - _matchStartTime);
             bool isCombatActive = _player.IsAlive && _boss.IsAlive;
 
-            // Direct health delta detection to guarantee hits are never missed
-            if (_boss.Health != null)
-            {
-                float curBossHp = _boss.Health.Current;
-                if (curBossHp < _lastBossHp - 0.05f)
-                {
-                    _countBossHitsTaken++;
-                    _lastBossHp = curBossHp;
-                }
-                else if (curBossHp > _lastBossHp)
-                {
-                    _lastBossHp = curBossHp;
-                }
-            }
-
-            if (_player.Health != null)
-            {
-                float curPlayerHp = _player.Health.Current;
-                if (curPlayerHp < _lastPlayerHp - 0.05f)
-                {
-                    _countPlayerHitsTaken++;
-                    _lastPlayerHp = curPlayerHp;
-                }
-                else if (curPlayerHp > _lastPlayerHp)
-                {
-                    _lastPlayerHp = curPlayerHp;
-                }
-            }
-
-            // Direct state machine tracking for attack inputs and dodges
+            // Combat events are the authoritative event source. Do not also derive counts from
+            // health or state changes: one action can produce both and was therefore recorded twice.
             string playerState = _player.CurrentStateName;
-            if (playerState == "PlayerAttackState" && _lastPlayerState != "PlayerAttackState")
-            {
-                _countPlayerAttacks++;
-            }
-            if (playerState == "PlayerDashState" && _lastPlayerState != "PlayerDashState")
-            {
-                _countPlayerDodges++;
-            }
             _lastPlayerState = playerState;
 
             string bossState = _boss.CurrentStateName;
-            if (bossState == "BossAttackState" && _lastBossState != "BossAttackState")
-            {
-                _countBossAttacks++;
-            }
-            if (bossState == "BossParryState" && _lastBossState != "BossParryState")
-            {
-                _countBossParries++;
-            }
             _lastBossState = bossState;
 
             // Detect fight restarts or conclusion
             if (_wasCombatActive && !isCombatActive)
             {
                 string outcome = !_player.IsAlive ? "BossWon" : "PlayerWon";
-                RecordSnapshot(outcome);
+                RecordSnapshot(outcome, "match_end");
 
                 if (_verboseLogging)
                 {
@@ -497,7 +478,6 @@ namespace AdaptiveBossArena.Game
             else if (!_wasCombatActive && isCombatActive)
             {
                 // New attempt started after conclusion
-                _currentGameId++;
                 StartNewGame();
             }
 
@@ -506,34 +486,15 @@ namespace AdaptiveBossArena.Game
                 return;
             }
 
-            // Check if boss started a new attack
-            AttackDefinition currentBossAttack = _boss.CurrentAttack;
-            bool attackInitiated = _logOnBossAttack &&
-                                   currentBossAttack != null &&
-                                   currentBossAttack != _lastObservedBossAttack;
-
-            if (attackInitiated)
-            {
-                _lastObservedBossAttack = currentBossAttack;
-                RecordSnapshot("Fighting");
-            }
-            else if (currentBossAttack == null)
-            {
-                _lastObservedBossAttack = null;
-            }
-
             // Periodic interval recording
             if (currentTime >= _nextSampleTime)
             {
                 _nextSampleTime = currentTime + _sampleIntervalSeconds;
-                if (!attackInitiated)
-                {
-                    RecordSnapshot("Fighting");
-                }
+                RecordSnapshot("Fighting", "periodic");
             }
         }
 
-        private void RecordSnapshot(string encounterStatus)
+        private void RecordSnapshot(string encounterStatus, string sampleKind)
         {
             if (_writer == null)
             {
@@ -613,7 +574,7 @@ namespace AdaptiveBossArena.Game
                     "{15},{16},{17:F1},{18:F3},{19:F1},{20:F3},{21}," +
                     "{22:F3},{23:F3},{24:F3},{25:F3},{26:F3},{27:F3},{28:F3},{29:F3},{30:F3},{31:F3},{32:F3},{33:F3}," +
                     "{34:F3},{35:F2},{36:F3},{37:F3},{38:F3},{39:F3},{40:F3},{41:F3},{42:F3},{43:F3}," +
-                    "{44},{45},{46},{47},{48},{49},{50},{51}",
+                    "{44},{45},{46},{47},{48},{49},{50},{51},{52},{53},3,{54},{55},{56},{57}",
                     _currentGameId,
                     currentTime,
                     frame,
@@ -660,12 +621,18 @@ namespace AdaptiveBossArena.Game
                     tUnblockable,
                     _countPlayerAttacks,
                     _countPlayerDodges,
+                    _countPlayerPerfectDodges,
                     _countPlayerDeflects,
+                    _countPlayerParries,
                     _countPlayerBlocks,
                     _countPlayerHitsTaken,
                     _countBossAttacks,
                     _countBossParries,
-                    _countBossHitsTaken);
+                    _countBossHitsTaken,
+                    _sessionId,
+                    CsvField(GetPlayerSource()),
+                    _boss.AIMode.ToString(),
+                    sampleKind);
 
                 _writer.WriteLine(line);
                 _writer.Flush();
@@ -680,6 +647,19 @@ namespace AdaptiveBossArena.Game
             {
                 Debug.LogWarning($"[TelemetryManager] Failed to write row: {ex.Message}");
             }
+        }
+
+        private static string CsvField(string value)
+        {
+            return "\"" + (value ?? string.Empty).Replace("\"", "\"\"") + "\"";
+        }
+
+        private static string GetPlayerSource()
+        {
+            string fromEnvironment = Environment.GetEnvironmentVariable("ABA_PLAYER_SOURCE");
+            return !string.IsNullOrWhiteSpace(fromEnvironment)
+                ? fromEnvironment
+                : PlayerPrefs.GetString("ABA_PlayerSource", "local");
         }
 
         private void CloseWriter()

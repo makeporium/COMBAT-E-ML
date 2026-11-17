@@ -165,6 +165,7 @@ namespace AdaptiveBossArena.Player.States
             context.Stamina.TrySpend(StaminaCost);
 
             context.PublishCombatEvent(CombatEventKind.GuardRaised);
+            context.PublishCombatEvent(CombatEventKind.PlayerParryStarted);
         }
 
         /// <inheritdoc />

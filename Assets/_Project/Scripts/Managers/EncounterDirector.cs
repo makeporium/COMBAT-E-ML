@@ -109,6 +109,7 @@ namespace AdaptiveBossArena.Game
         private Vector3 _lastBodyDirection;
 
         private int _parriedByBossThisAttempt;
+        private int _playerParriesThisAttempt;
         private int _perfectDodgesThisAttempt;
 
         /// <summary>Seconds the current attempt has been running.</summary>
@@ -340,7 +341,16 @@ namespace AdaptiveBossArena.Game
         /// </remarks>
         private void OnDeflected()
         {
-            _deflectsThisAttempt++;
+            // Parry Strike shares this channel with timed guard deflects because both use the same
+            // sparks, sound and posture relay. Keep their report counters separate nevertheless.
+            if (_player != null && _player.LastDefenceWasParry)
+            {
+                _playerParriesThisAttempt++;
+            }
+            else
+            {
+                _deflectsThisAttempt++;
+            }
 
             if (_player == null || _boss == null)
             {
@@ -389,12 +399,15 @@ namespace AdaptiveBossArena.Game
 
             if (_roundIntro == null)
             {
+                // The intro is presentation only. A missing panel must never leave combat paused.
+                _time?.SetPaused(false);
                 BeginAttempt();
                 return;
             }
 
             _pauseMenu?.SetSuppressed(true);
             _time?.SetPaused(true);
+            _introFailsafeAt = Time.unscaledTime + _roundIntro.HoldSeconds + 1.5f;
 
             // The first attempt of a run opens on the boss: its name, a roar, the camera on it. Retries skip
             // straight to the quick ready and fight - the player has met it.
@@ -416,6 +429,9 @@ namespace AdaptiveBossArena.Game
 
         /// <summary>Whether this run has already opened on the boss's entrance.</summary>
         private bool _entranceShown;
+
+        // A broken or disabled UI intro must not turn into a combat soft-lock.
+        private float _introFailsafeAt = float.NegativeInfinity;
 
         /// <summary>Holds the camera on the boss under its name and a roar, then hands the fight over.</summary>
         private void PlayEntrance()
@@ -440,6 +456,16 @@ namespace AdaptiveBossArena.Game
         /// <summary>Lets any key or click skip the intro, so a player who has seen it is never held.</summary>
         private void Update()
         {
+            if (!float.IsNegativeInfinity(_introFailsafeAt) && Time.unscaledTime >= _introFailsafeAt)
+            {
+                _introFailsafeAt = float.NegativeInfinity;
+                if (_roundIntro == null || !_roundIntro.IsRunning)
+                {
+                    _time?.SetPaused(false);
+                    BeginAttempt();
+                }
+            }
+
             if (_roundIntro == null || !_roundIntro.IsRunning || !SkipPressed())
             {
                 return;
@@ -462,6 +488,7 @@ namespace AdaptiveBossArena.Game
         /// <summary>Releases the fight once the intro has finished.</summary>
         private void OnIntroComplete()
         {
+            _introFailsafeAt = float.NegativeInfinity;
             _time?.SetPaused(false);
             BeginAttempt();
         }
@@ -474,6 +501,7 @@ namespace AdaptiveBossArena.Game
 
             _deflectsThisAttempt = 0;
             _parriedByBossThisAttempt = 0;
+            _playerParriesThisAttempt = 0;
             _perfectDodgesThisAttempt = 0;
 
             _pauseMenu?.SetSuppressed(false);
@@ -626,12 +654,16 @@ namespace AdaptiveBossArena.Game
             }
 
             int healthPercent = Mathf.RoundToInt(Mathf.Clamp01(remainingHealth) * 100f);
+            int bossHealthPercent = Mathf.RoundToInt(
+                Mathf.Clamp01(_boss?.Health?.Normalized ?? 0f) * 100f);
             // The reciprocal number is the most useful thing a duel's report can carry: deflects
             // alone say how well the player defended, and say nothing about how often the boss read
             // them back.
             builder.Append(
-                $"Deflects landed {_deflectsThisAttempt}   ·   Parried by it {_parriedByBossThisAttempt}" +
-                $"   ·   Perfect dodges {_perfectDodgesThisAttempt}   ·   Health left {healthPercent}%");
+                $"Your guard deflects: {_deflectsThisAttempt}   ·   Your successful parries: {_playerParriesThisAttempt}" +
+                $"   ·   Boss parries: {_parriedByBossThisAttempt}\n" +
+                $"Perfect dodges: {_perfectDodgesThisAttempt}   ·   Your HP: {healthPercent}%" +
+                $"   ·   Boss HP: {bossHealthPercent}%");
 
             RunModifiers modifiers = RunSettings.Current;
             if (modifiers != null && modifiers.AnyActive)

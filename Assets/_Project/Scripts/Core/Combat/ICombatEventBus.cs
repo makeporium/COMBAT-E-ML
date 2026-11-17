@@ -89,7 +89,11 @@ namespace AdaptiveBossArena.Core.Combat
         /// one exists purely to tell the parry apart - a harder, riskier act that deserves its own ring and,
         /// later, its own place in the boss's statistics. Appended, never inserted.
         /// </remarks>
-        PlayerParried = 17
+        PlayerParried = 17,
+
+        /// <summary>The player committed to the high-risk parry-strike animation and its counter window.</summary>
+        /// <remarks>Appended so the persisted numeric values above remain stable.</remarks>
+        PlayerParryStarted = 18
     }
 
     /// <summary>

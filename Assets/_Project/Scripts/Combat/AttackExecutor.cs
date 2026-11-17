@@ -46,6 +46,7 @@ namespace AdaptiveBossArena.Combat
         private readonly IHazardField _hazardField;
 
         private bool _landedThisAttack;
+        private bool _resolvedAgainstTarget;
 
         /// <summary>Creates an executor bound to one combatant.</summary>
         /// <param name="origin">Transform attack volumes are positioned relative to.</param>
@@ -144,6 +145,7 @@ namespace AdaptiveBossArena.Combat
 
             _alreadyStruck.Clear();
             _landedThisAttack = false;
+            _resolvedAgainstTarget = false;
 
             EnsureSubscribed();
             _timeline.Begin(attack);
@@ -237,6 +239,14 @@ namespace AdaptiveBossArena.Combat
 
             DamageResult result = hurtbox.Receive(damage);
 
+            // An evade, block, deflect or parry is a resolved exchange, not a miss.  Leaving this
+            // false made the timeline publish AttackWhiffed after already publishing its actual
+            // outcome, causing the ML agent to learn from the same exchange twice.
+            if (result.Outcome != DamageOutcome.Ignored)
+            {
+                _resolvedAgainstTarget = true;
+            }
+
             switch (result.Outcome)
             {
                 case DamageOutcome.Applied:
@@ -324,7 +334,7 @@ namespace AdaptiveBossArena.Combat
         /// <summary>Relays timeline completion, reporting a whiff when nothing was struck.</summary>
         private void OnTimelineCompleted()
         {
-            if (!_landedThisAttack)
+            if (!_resolvedAgainstTarget)
             {
                 // The signal behind the boss noticing its pattern has been read, and behind the
                 // player's whiff ratio. An attack that touched nothing is as informative as one that

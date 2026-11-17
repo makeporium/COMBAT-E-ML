@@ -42,6 +42,7 @@ namespace AdaptiveBossArena.Combat.Feel
 
         private ImpactBurst[] _bursts;
         private int _next;
+        private Material _runtimeFallbackMaterial;
 
         /// <summary>
         /// Builds the pool around the material its sparks are drawn with.
@@ -62,7 +63,7 @@ namespace AdaptiveBossArena.Combat.Feel
                     "[Adaptive Boss Arena] Impact bursts were given no material and built one at runtime. " +
                     "Its shader may be stripped from a build; re-run the scene setup.");
 
-                material = CreateParticleMaterial();
+                material = _runtimeFallbackMaterial = CreateParticleMaterial();
             }
 
             int capacity = EffectBudget.IsWebPlayer ? Mathf.Min(_capacity, EffectBudget.WebImpactBursts) : _capacity;
@@ -95,6 +96,17 @@ namespace AdaptiveBossArena.Combat.Feel
 
             _bursts[_next].Play(position, direction, flavour);
             _next = (_next + 1) % _bursts.Length;
+        }
+
+        private void OnDestroy()
+        {
+            // HideAndDontSave prevents this fallback from becoming an asset, but does not release
+            // its GPU allocation. Scene rebuilds used to leave one material resident each time.
+            if (_runtimeFallbackMaterial != null)
+            {
+                Destroy(_runtimeFallbackMaterial);
+                _runtimeFallbackMaterial = null;
+            }
         }
 
         /// <summary>Builds the one material every burst shares.</summary>

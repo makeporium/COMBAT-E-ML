@@ -245,6 +245,7 @@ namespace AdaptiveBossArena.AI
         public float LivePlayerDeflectRate { get; private set; }
 
         private AttackDefinition _lastExecutedAttack;
+        private float _lastParryRollActionStartedAt = float.NegativeInfinity;
 
         // Anti-Spam, Fatigue & Pacing Limits (Prevents degenerate projectile spamming)
         private ActionArchetype _lastExecutedArchetype = ActionArchetype.MeleeStrike;
@@ -465,10 +466,15 @@ namespace AdaptiveBossArena.AI
             }
 
             PlayerObservation obs = context.Perceived;
-            if (!obs.IsValid || obs.ActionState != ObservableActionState.HeavyAttacking)
+            if (!obs.IsValid)
             {
                 return false;
             }
+
+            bool heavy = obs.ActionState == ObservableActionState.HeavyAttacking;
+            bool repeatedLight = obs.ActionState == ObservableActionState.LightAttacking &&
+                                 LivePlayerAttackRate >= 0.6f;
+            if (!heavy && !repeatedLight) return false;
 
             float distance = context.DistanceToPlayer;
             if (distance > 2.8f)
@@ -476,10 +482,15 @@ namespace AdaptiveBossArena.AI
                 return false;
             }
 
-            // Dynamic parry probability conditioned on player aggression rate
-            // High aggression (Sivam brawler) -> boss increases parry rate to 60%
-            // Low aggression (defensive turtler) -> boss parries selectively at 20%
-            float adaptiveParryChance = Mathf.Clamp(0.20f + (LivePlayerAttackRate * 0.65f), 0.15f, 0.65f);
+            // One decision per visible swing. Rolling every frame would turn even a modest
+            // probability into a near-certain parry during a long wind-up.
+            if (Mathf.Abs(obs.ActionStartedAt - _lastParryRollActionStartedAt) < 0.02f)
+                return false;
+            _lastParryRollActionStartedAt = obs.ActionStartedAt;
+
+            float adaptiveParryChance = heavy
+                ? Mathf.Clamp(0.20f + (LivePlayerAttackRate * 0.10f), 0.20f, 0.60f)
+                : Mathf.Clamp(0.10f + (LivePlayerAttackRate * 0.05f), 0.10f, 0.35f);
             bool rolled = context.Random.NextFloat(0f, 1f) < adaptiveParryChance;
 
             if (rolled)
@@ -531,12 +542,16 @@ namespace AdaptiveBossArena.AI
                 {
                     _playerAttackTimestamps.Enqueue(combatTime);
                 }
-                else if (combatEvent.Kind == CombatEventKind.DodgePerformed || combatEvent.Kind == CombatEventKind.PerfectDodge)
+                else if (combatEvent.Kind == CombatEventKind.DodgePerformed)
                 {
+                    // A perfect dodge is the successful outcome of the dodge already recorded at
+                    // dash start. Counting it again falsely doubles the player's dodge cadence.
                     _playerDodgeTimestamps.Enqueue(combatTime);
                 }
-                else if (combatEvent.Kind == CombatEventKind.Deflected || combatEvent.Kind == CombatEventKind.Parried || combatEvent.Kind == CombatEventKind.PlayerParried)
+                else if (combatEvent.Kind == CombatEventKind.Deflected)
                 {
+                    // A parry strike deliberately emits Deflected for existing effects plus
+                    // PlayerParried for its richer semantics. It is still one defensive success.
                     _playerDeflectTimestamps.Enqueue(combatTime);
                 }
             }

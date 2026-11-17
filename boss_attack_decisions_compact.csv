@@ -1,0 +1,26 @@
+schema_version,session_id,player_source,game_id,timestamp,ai_mode,sample_kind,boss_action,attack_archetype,distance_to_boss,relative_angle_deg,player_state,player_hp_pct,player_stamina_pct,player_posture_pct,player_is_guarding,player_is_invulnerable,boss_hp_pct,boss_poise_pct,boss_phase,count_player_attacks,count_player_dodges,count_player_perfect_dodges,count_player_deflects,count_player_parries,count_player_blocks,count_player_hits_taken,count_boss_attacks
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,1.23,MachineLearning,attack_start,Ground Slam,HeavyCrush,2.84,-0.2,PlayerAttackState,1.0,1.0,1.0,0,0,1.0,1.0,0,1,0,0,0,0,0,0,1
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,5.83,MachineLearning,attack_start,Wide Sweep,MeleeStrike,3.21,-0.9,PlayerMoveState,0.83,1.0,1.0,0,0,0.75,0.969,0,5,0,0,0,0,0,1,2
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,9.15,MachineLearning,attack_start,Ground Slam,HeavyCrush,1.54,-5.8,PlayerParryStrikeState,0.71,0.86,1.0,0,0,0.75,1.0,0,5,0,0,0,0,0,2,3
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,12.11,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,2.26,0.0,PlayerAttackState,0.54,1.0,1.0,0,0,0.597,0.953,1,9,0,0,0,0,0,3,4
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,15.3,MachineLearning,attack_start,Charge,GapCloser,4.12,-2.1,PlayerMoveState,0.54,1.0,1.0,0,0,0.597,1.0,1,9,1,0,0,0,0,3,5
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,17.99,MachineLearning,attack_start,Charge,GapCloser,2.76,-66.2,PlayerMoveState,0.51,1.0,1.0,0,0,0.597,1.0,1,9,1,0,0,0,0,3,6
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,19.41,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,9.95,-145.0,PlayerMoveState,0.51,1.0,1.0,0,0,0.549,1.0,1,12,1,0,0,0,0,3,7
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,21.45,MachineLearning,attack_start,Charge,GapCloser,11.07,-13.1,PlayerKnockedDownState,0.29,1.0,1.0,0,0,0.549,1.0,1,12,1,0,0,0,0,4,8
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,24.02,MachineLearning,attack_start,Perilous Overhead,HeavyCrush,1.76,-32.3,PlayerMoveState,0.29,1.0,1.0,0,0,0.549,1.0,1,12,1,0,0,0,0,4,9
+3,d1f90e669abd45f9a41a311b7635eb80,local,1,25.72,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,6.4,54.5,PlayerMoveState,0.03,0.78,0.738,0,0,0.235,0.689,2,15,2,0,0,0,0,5,10
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,2.0,MachineLearning,attack_start,Wide Sweep,MeleeStrike,2.87,-8.5,PlayerParryStrikeState,1.0,0.86,1.0,0,0,1.0,1.0,0,0,0,0,0,0,0,0,1
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,4.45,MachineLearning,attack_start,Wide Sweep,MeleeStrike,3.02,-8.5,PlayerIdleState,1.0,1.0,1.0,0,0,0.686,0.31,0,4,0,0,1,1,0,0,2
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,6.32,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,1.5,-0.2,PlayerAttackState,0.88,1.0,1.0,0,0,0.61,0.414,1,7,0,0,1,1,0,1,3
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,9.63,MachineLearning,attack_start,Charge,GapCloser,3.11,-4.2,PlayerMoveState,0.63,1.0,1.0,0,0,0.533,0.691,1,8,0,0,1,1,0,2,4
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,12.2,MachineLearning,attack_start,Charge,GapCloser,6.03,-8.5,PlayerIdleState,0.57,1.0,1.0,0,0,0.485,0.879,1,11,0,0,1,1,0,2,5
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,14.74,MachineLearning,attack_start,Jab,MeleeStrike,2.54,-27.8,PlayerAttackState,0.57,1.0,1.0,0,0,0.408,0.896,1,14,0,0,1,1,0,2,6
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,15.41,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,2.82,-11.2,PlayerStaggerState,0.49,1.0,0.968,0,0,0.312,0.837,2,15,0,0,1,1,0,3,7
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,18.67,MachineLearning,attack_start,Charge,GapCloser,10.42,5.9,PlayerMoveState,0.49,1.0,1.0,0,0,0.312,1.0,2,16,1,1,1,1,0,3,8
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,20.08,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,4.76,-177.1,PlayerMoveState,0.49,1.0,1.0,0,0,0.312,1.0,2,17,1,1,1,1,0,3,9
+3,d1f90e669abd45f9a41a311b7635eb80,local,2,23.14,MachineLearning,attack_start,Shockwave,RangedThreat,4.09,-2.7,PlayerGetUpState,0.24,1.0,1.0,0,0,0.168,1.0,2,20,1,1,1,1,0,4,10
+3,d1f90e669abd45f9a41a311b7635eb80,local,3,3.03,MachineLearning,attack_start,Wide Sweep,MeleeStrike,4.0,0.0,PlayerIdleState,1.0,1.0,1.0,0,0,1.0,1.0,0,0,0,0,0,0,0,0,1
+3,7409dc469ccd4101bf1b395ff9ff3fb9,local,4,1.38,MachineLearning,attack_start,Wide Sweep,MeleeStrike,3.08,0.0,PlayerAttackState,1.0,1.0,1.0,0,0,1.0,1.0,0,2,0,0,0,0,0,0,1
+3,7409dc469ccd4101bf1b395ff9ff3fb9,local,4,4.77,MachineLearning,attack_start,Ground Slam,HeavyCrush,1.47,-11.7,PlayerMoveState,0.88,1.0,1.0,0,0,1.0,1.0,0,4,0,0,0,0,0,1,2
+3,7409dc469ccd4101bf1b395ff9ff3fb9,local,4,7.43,MachineLearning,attack_start,Wide Sweep,MeleeStrike,2.63,-5.2,PlayerIdleState,0.76,1.0,1.0,0,0,0.686,0.31,0,7,0,0,1,1,0,1,3
+3,7409dc469ccd4101bf1b395ff9ff3fb9,local,4,9.54,MachineLearning,attack_start,Cataclysmic Wave,RangedThreat,3.39,-3.2,PlayerAttackState,0.64,1.0,1.0,0,0,0.546,1.0,1,11,0,0,2,2,0,1,4

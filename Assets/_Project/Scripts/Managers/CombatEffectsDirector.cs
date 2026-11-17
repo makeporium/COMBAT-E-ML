@@ -215,6 +215,13 @@ namespace AdaptiveBossArena.Game
                     _shake?.PunchFov(-DeflectFovNarrow);
                     break;
 
+                case CombatEventKind.PlayerParried:
+                    // The normal Deflected event has already supplied the steel sparks. This larger
+                    // gold burst is the extra punctuation that makes the committed parry strike
+                    // read as a stronger, riskier answer rather than as another timed guard.
+                    Burst(combatEvent.Position, -combatEvent.Direction, ImpactFlavour.PostureBreak);
+                    break;
+
                 case CombatEventKind.DodgePerformed:
                     // The whole camera breathes out on a dash, which is most of what makes a roll read
                     // as a burst of speed rather than a teleport.

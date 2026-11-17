@@ -5,10 +5,15 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-CSV_FILE = "gameplay_telemetry.csv"
-XLSX_FILE = "gameplay_telemetry.xlsx"
+CSV_FILE = "gameplay_telemetry_v3.csv"
+XLSX_FILE = "gameplay_telemetry_v3.xlsx"
 
 VARIABLE_DICTIONARY = [
+    ("schema_version", "Provenance", "TelemetryManager", "Integer", "3", "Telemetry column layout version; do not merge unlike versions by column position."),
+    ("session_id", "Provenance", "TelemetryManager", "String", "UUID", "Identifies one Unity play session so game IDs remain unique across sessions."),
+    ("player_source", "Provenance", "PlayerPrefs ABA_PlayerSource", "String", "Anonymized label", "Tester label. Set before a session; default is local."),
+    ("ai_mode", "Evaluation", "BossController.AIMode", "String", "RuleBased or MachineLearning", "Policy active when this row was recorded."),
+    ("sample_kind", "Evaluation", "TelemetryManager", "String", "periodic, attack_start, match_end", "Reason this snapshot was written."),
     # Encounter & Time
     ("game_id", "Encounter", "TelemetryManager", "Integer", ">= 1", "Sequential attempt/game counter. Increments each time the fight resets or starts fresh across play sessions."),
     ("timestamp", "Encounter", "ITimeService / Time.time", "Float", ">= 0.0 (Seconds)", "Elapsed combat time (in seconds) since the start of the current match attempt."),

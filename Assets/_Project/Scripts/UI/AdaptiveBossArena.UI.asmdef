@@ -5,6 +5,7 @@
     "AdaptiveBossArena.Utilities",
     "AdaptiveBossArena.Core",
     "AdaptiveBossArena.Combat",
+    "AdaptiveBossArena.AI",
     "Unity.InputSystem",
     "UnityEngine.UI"
   ],
